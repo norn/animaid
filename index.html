@@ -283,6 +283,19 @@
             margin: 5px 0;
         }
 
+        .fibonacci-bpm-indicator {
+            position: fixed;
+            top: 80px; /* Position below the exit button */
+            right: 20px;
+            z-index: 10000;
+            background: #000;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            color: #FFD700;
+            transition: background 0.1s ease-out;
+        }
+
         @media (max-width: 1024px) {
             .main-view {
                 grid-template-columns: 1fr;
@@ -1408,7 +1421,7 @@
 
             // Add BPM indicator to Fibonacci mode
             const bpmIndicator = document.createElement('div');
-            bpmIndicator.className = 'bpm-indicator';
+            bpmIndicator.className = 'fibonacci-bpm-indicator';
             bpmIndicator.id = 'fibonacciBpmIndicator';
             bpmIndicator.textContent = `♪ ${currentBPM} BPM`;
 
