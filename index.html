@@ -251,6 +251,15 @@
                 <button id="micButton" onclick="toggleMicrophone()">🎤 Start Beat Detection</button>
                 <span id="micStatus" style="padding: 12px; color: #666;"></span>
             </div>
+            <div class="input-group">
+                <label for="algorithmSelect" style="padding: 12px; font-weight: bold;">BPM Algorithm:</label>
+                <select id="algorithmSelect" style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; cursor: pointer;">
+                    <option value="simple">Simple (Current)</option>
+                    <option value="realtime">Realtime BPM Analyzer</option>
+                    <option value="web-audio">Web Audio Beat Detector</option>
+                    <option value="music-beat">Music Beat Detector</option>
+                </select>
+            </div>
         </div>
 
         <div class="main-view">
@@ -276,6 +285,7 @@
     </div>
 
     <script src="animaid.js"></script>
+    <script src="bpm-detectors-bundle.js"></script>
     <script>
         let lastGeneratedBPM = 120;
         let beatInterval = null;
@@ -451,6 +461,12 @@
         const BPM_HISTORY_SIZE = 8; // Require stability over 8 beats
         const BPM_TOLERANCE = 3; // BPM must differ by at least this much to trigger update
 
+        // Algorithm selection
+        let currentAlgorithm = 'simple';
+        let realtimeBpmProcessor = null;
+        let audioBufferForAnalysis = [];
+        const AUDIO_BUFFER_DURATION = 10000; // 10 seconds for non-realtime algorithms
+
         async function toggleMicrophone() {
             if (isListening) {
                 stopMicrophone();
@@ -461,6 +477,9 @@
 
         async function startMicrophone() {
             try {
+                // Get current algorithm selection
+                currentAlgorithm = document.getElementById('algorithmSelect').value;
+
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -473,22 +492,32 @@
                 lowpassFilter.frequency.value = 250; // Cut off above 250Hz
                 lowpassFilter.Q.value = 1; // Standard Q factor
 
-                javascriptNode = audioContext.createScriptProcessor(1024, 1, 1);
-
                 analyser.smoothingTimeConstant = 0.3;
                 analyser.fftSize = 2048; // Increased for better frequency resolution
 
-                // Signal chain: microphone -> lowpass -> analyser -> scriptProcessor
-                microphone.connect(lowpassFilter);
-                lowpassFilter.connect(analyser);
-                analyser.connect(javascriptNode);
-                javascriptNode.connect(audioContext.destination);
+                // Setup algorithm-specific processing
+                if (currentAlgorithm === 'realtime') {
+                    await setupRealtimeBPM();
+                } else {
+                    // For simple, web-audio, and music-beat algorithms
+                    javascriptNode = audioContext.createScriptProcessor(1024, 1, 1);
 
-                javascriptNode.onaudioprocess = detectBeat;
+                    // Signal chain: microphone -> lowpass -> analyser -> scriptProcessor
+                    microphone.connect(lowpassFilter);
+                    lowpassFilter.connect(analyser);
+                    analyser.connect(javascriptNode);
+                    javascriptNode.connect(audioContext.destination);
+
+                    if (currentAlgorithm === 'simple') {
+                        javascriptNode.onaudioprocess = detectBeat;
+                    } else if (currentAlgorithm === 'web-audio' || currentAlgorithm === 'music-beat') {
+                        javascriptNode.onaudioprocess = captureAudioBuffer;
+                    }
+                }
 
                 isListening = true;
                 document.getElementById('micButton').textContent = '🎤 Stop Beat Detection';
-                document.getElementById('micStatus').textContent = 'Listening...';
+                document.getElementById('micStatus').textContent = `Listening (${getAlgorithmName()})...`;
                 document.getElementById('micStatus').style.color = '#667eea';
 
                 // Stop automatic beat sync when using microphone
@@ -501,11 +530,67 @@
             }
         }
 
+        function getAlgorithmName() {
+            const names = {
+                'simple': 'Simple',
+                'realtime': 'Realtime BPM',
+                'web-audio': 'Web Audio Beat',
+                'music-beat': 'Music Beat'
+            };
+            return names[currentAlgorithm] || 'Unknown';
+        }
+
+        async function setupRealtimeBPM() {
+            try {
+                // Setup realtime-bpm-analyzer
+                realtimeBpmProcessor = await window.BPMDetectors.RealtimeBPM.createRealTimeBpmProcessor(audioContext, {
+                    continuousAnalysis: true,
+                    stabilizationTime: 20000
+                });
+
+                // Connect audio chain
+                microphone.connect(lowpassFilter);
+                lowpassFilter.connect(realtimeBpmProcessor);
+                realtimeBpmProcessor.connect(audioContext.destination);
+
+                // Listen for BPM updates
+                realtimeBpmProcessor.port.onmessage = (event) => {
+                    if (event.data.message === 'BPM_STABLE' || event.data.message === 'BPM') {
+                        const bpmData = event.data.data;
+                        if (bpmData.bpm && bpmData.bpm.length > 0) {
+                            const detectedBPM = bpmData.bpm[0].tempo;
+                            if (detectedBPM >= 60 && detectedBPM <= 200) {
+                                handleBPMDetection(detectedBPM);
+                            }
+                        }
+                    }
+                };
+            } catch (err) {
+                console.error('Realtime BPM setup error:', err);
+                document.getElementById('micStatus').textContent = 'Realtime BPM setup failed, using Simple';
+                document.getElementById('micStatus').style.color = '#d32f2f';
+                currentAlgorithm = 'simple';
+
+                // Fallback to simple algorithm
+                javascriptNode = audioContext.createScriptProcessor(1024, 1, 1);
+                microphone.connect(lowpassFilter);
+                lowpassFilter.connect(analyser);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+                javascriptNode.onaudioprocess = detectBeat;
+            }
+        }
+
         function stopMicrophone() {
             if (audioContext) {
                 if (javascriptNode) {
                     javascriptNode.disconnect();
                     javascriptNode.onaudioprocess = null;
+                }
+                if (realtimeBpmProcessor) {
+                    realtimeBpmProcessor.disconnect();
+                    realtimeBpmProcessor.port.onmessage = null;
+                    realtimeBpmProcessor = null;
                 }
                 if (analyser) analyser.disconnect();
                 if (lowpassFilter) lowpassFilter.disconnect();
@@ -533,8 +618,109 @@
             bpmHistory = [];
             energyBuffer = [];
             beatTimes = [];
+            audioBufferForAnalysis = [];
             startBeatSync(120);
             updateDancerBPM(120, false);
+        }
+
+        // Helper function to handle BPM detection from various algorithms
+        function handleBPMDetection(detectedBPM) {
+            if (detectedBPM && detectedBPM >= 60 && detectedBPM <= 200) {
+                currentBPM = detectedBPM;
+
+                // Add to BPM history for smoothing
+                bpmHistory.push(detectedBPM);
+                if (bpmHistory.length > BPM_HISTORY_SIZE) {
+                    bpmHistory.shift();
+                }
+
+                // Check if BPM has been stable enough to update
+                if (bpmHistory.length >= BPM_HISTORY_SIZE) {
+                    // Calculate average of recent BPM measurements
+                    const avgBPM = Math.round(bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length);
+
+                    // Check if all recent measurements are close to average (stable)
+                    const isStable = bpmHistory.every(bpm => Math.abs(bpm - avgBPM) <= BPM_TOLERANCE);
+
+                    // Only update if stable and significantly different from current confirmed BPM
+                    if (isStable && Math.abs(avgBPM - confirmedBPM) >= BPM_TOLERANCE) {
+                        confirmedBPM = avgBPM;
+                        updateDancerBPM(confirmedBPM, true);
+                    }
+                }
+
+                // Visual feedback
+                const indicator = document.getElementById('bpmIndicator');
+                indicator.classList.add('beat-flash');
+                setTimeout(() => indicator.classList.remove('beat-flash'), 100);
+
+                const beatDot = document.getElementById('beatDot');
+                beatDot.classList.add('beat-active');
+                setTimeout(() => beatDot.classList.remove('beat-active'), 100);
+            }
+        }
+
+        // Capture audio buffer for web-audio-beat-detector and music-beat-detector
+        let lastAnalysisTime = 0;
+        const ANALYSIS_INTERVAL = 2000; // Analyze every 2 seconds
+
+        function captureAudioBuffer(event) {
+            const inputData = event.inputBuffer.getChannelData(0);
+            const currentTime = Date.now();
+
+            // Add to buffer
+            audioBufferForAnalysis.push(...inputData);
+
+            // Keep only last 10 seconds of audio
+            const maxSamples = audioContext.sampleRate * 10;
+            if (audioBufferForAnalysis.length > maxSamples) {
+                audioBufferForAnalysis = audioBufferForAnalysis.slice(-maxSamples);
+            }
+
+            // Analyze periodically
+            if (currentTime - lastAnalysisTime >= ANALYSIS_INTERVAL && audioBufferForAnalysis.length >= audioContext.sampleRate * 3) {
+                lastAnalysisTime = currentTime;
+
+                if (currentAlgorithm === 'web-audio') {
+                    analyzeWithWebAudio();
+                } else if (currentAlgorithm === 'music-beat') {
+                    analyzeWithMusicBeat();
+                }
+            }
+        }
+
+        async function analyzeWithWebAudio() {
+            try {
+                // Create audio buffer from captured data
+                const buffer = audioContext.createBuffer(1, audioBufferForAnalysis.length, audioContext.sampleRate);
+                buffer.copyToChannel(new Float32Array(audioBufferForAnalysis), 0);
+
+                // Use web-audio-beat-detector
+                const tempo = await window.BPMDetectors.BeatDetector.analyze(buffer);
+
+                if (tempo && tempo >= 60 && tempo <= 200) {
+                    handleBPMDetection(Math.round(tempo));
+                }
+            } catch (err) {
+                console.error('Web Audio Beat Detector error:', err);
+            }
+        }
+
+        async function analyzeWithMusicBeat() {
+            try {
+                // Create audio buffer from captured data
+                const buffer = audioContext.createBuffer(1, audioBufferForAnalysis.length, audioContext.sampleRate);
+                buffer.copyToChannel(new Float32Array(audioBufferForAnalysis), 0);
+
+                // Use music-beat-detector
+                const result = await window.BPMDetectors.MusicBeatDetector.guess(buffer);
+
+                if (result && result.bpm && result.bpm >= 60 && result.bpm <= 200) {
+                    handleBPMDetection(Math.round(result.bpm));
+                }
+            } catch (err) {
+                console.error('Music Beat Detector error:', err);
+            }
         }
 
         // Autocorrelation for finding periodic patterns in energy signal
