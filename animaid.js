@@ -260,25 +260,25 @@ class SkeletalAnimaID {
     describePose(pose, index) {
         const descriptions = [];
 
-        if (Math.abs(pose.rightShoulderAngle - 45) > 50) {
+        if (Math.abs(pose.rightShoulderAngle - 45) > 30) {
             descriptions.push(pose.rightShoulderAngle > 45 ? "right arm up" : "right arm down");
         }
-        if (Math.abs(pose.leftShoulderAngle + 45) > 50) {
+        if (Math.abs(pose.leftShoulderAngle + 45) > 30) {
             descriptions.push(pose.leftShoulderAngle > -45 ? "left arm down" : "left arm up");
         }
-        if (Math.abs(pose.rightHipAngle) > 20) {
+        if (Math.abs(pose.rightHipAngle) > 12) {
             descriptions.push(pose.rightHipAngle > 0 ? "right leg forward" : "right leg back");
         }
-        if (Math.abs(pose.leftHipAngle) > 20) {
+        if (Math.abs(pose.leftHipAngle) > 12) {
             descriptions.push(pose.leftHipAngle > 0 ? "left leg forward" : "left leg back");
         }
-        if (Math.abs(pose.verticalOffset) > 8) {
+        if (Math.abs(pose.verticalOffset) > 5) {
             descriptions.push(pose.verticalOffset < 0 ? "jump" : "squat");
         }
-        if (Math.abs(pose.bodyRotate) > 12) {
+        if (Math.abs(pose.bodyRotate) > 8) {
             descriptions.push(pose.bodyRotate > 0 ? "turn right" : "turn left");
         }
-        if (Math.abs(pose.bodyTilt) > 8) {
+        if (Math.abs(pose.bodyTilt) > 6) {
             descriptions.push("balance");
         }
 

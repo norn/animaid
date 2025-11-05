@@ -9,7 +9,8 @@ AnimaID generates unique, dancing skeletal avatars based on ULID (Universally Un
 ## Features
 
 - **Deterministic Generation**: Same ULID always produces the same dancer
-- **Procedural Animation**: 120 BPM skeletal animation with 15 body joints
+- **Procedural Animation**: Dynamic BPM skeletal animation with 15 body joints
+- **Real-time Beat Detection**: Dance to live music from your microphone
 - **Diverse Dance Styles**: Hip-hop, contemporary, latin, ballet, and freestyle
 - **Realistic Physics**: Natural body balance, arm-leg coordination, and anatomically correct joint angles
 - **Lightweight**: ~25KB JavaScript library, ~13KB HTML page
@@ -54,15 +55,20 @@ console.log('Dance style parameters:', info.preferences);
 ### Constructor
 
 ```javascript
-new SkeletalAnimaID(ulid)
+new SkeletalAnimaID(ulid, bpm = 120)
 ```
 
 **Parameters:**
 - `ulid` (string): A 26-character ULID string
+- `bpm` (number, optional): Beats per minute for animation speed (default: 120)
 
 **Example:**
 ```javascript
+// Default 120 BPM
 const dancer = new SkeletalAnimaID('01HQZM3K7X9YF2NW8TBVKJD6PQ');
+
+// Custom BPM (e.g., 140 BPM for faster dance)
+const fastDancer = new SkeletalAnimaID('01HQZM3K7X9YF2NW8TBVKJD6PQ', 140);
 ```
 
 ### Methods
@@ -142,7 +148,10 @@ Each dancer has a 15-joint skeleton:
    - Body balance (torso tilt for center of mass)
    - Natural knee bending during steps
    - Anatomically constrained joint angles
-4. **Timing**: 120 BPM = 0.5 sec/beat, 8 beats/cycle = 4 second loop
+4. **Timing**: Configurable BPM (default 120), 8 beats/cycle
+   - 120 BPM = 0.5 sec/beat = 4.0 sec cycle
+   - 140 BPM = 0.43 sec/beat = 3.4 sec cycle
+   - 90 BPM = 0.67 sec/beat = 5.3 sec cycle
 5. **Interpolation**: Smooth transitions between poses using CSS ease-in-out
 
 ### Deterministic Generation
@@ -151,8 +160,9 @@ The library uses a seeded random number generator. The same ULID will always pro
 - Same color
 - Same physique
 - Same dance style
-- Same movement sequence
-- Same animation timing
+- Same movement sequence (independent of BPM)
+
+**Note**: Animation timing (speed) is controlled by the `bpm` parameter and can vary while keeping the same movement sequence.
 
 ## Dance Styles
 
@@ -166,6 +176,39 @@ The generator supports 6 distinct dance styles, each with characteristic movemen
 | **Latin** | Hip sway, body rotation, fluid arms | 15% |
 | **Symmetric** | Balanced movements, structured poses | 15% |
 | **Freestyle** | Random combination of all parameters | 25% |
+
+## Beat Detection
+
+The live demo (`index.html`) includes real-time beat detection from microphone input:
+
+### How It Works
+
+1. **Microphone Access**: Click "🎤 Start Beat Detection" to access your microphone
+2. **Audio Analysis**: Analyzes audio frequencies (focusing on bass/rhythm range)
+3. **Beat Detection**: Detects beats when energy spikes above average
+4. **BPM Calculation**: Calculates tempo from median interval of last 16 beats
+5. **Real-time Sync**: All dancers update instantly to match detected BPM
+
+### Features
+
+- **Visual Feedback**: BPM indicator flashes yellow on red background when beat detected
+- **Live BPM Display**: Shows current detected BPM (60-200 range)
+- **Gallery Sync**: All dancers in gallery update in real-time with detected tempo
+- **Smooth Detection**: Uses median filtering to avoid outliers and false positives
+
+### Usage
+
+```javascript
+// In the browser demo
+// 1. Click "🎤 Start Beat Detection"
+// 2. Play music or make rhythmic sounds
+// 3. Watch all dancers sync to the detected beat!
+```
+
+The beat detection works best with:
+- Clear rhythmic music
+- Prominent bass/kick drums
+- Consistent tempo (60-200 BPM)
 
 ## Browser Compatibility
 
@@ -197,6 +240,23 @@ ulids.forEach(ulid => {
     const dancer = new SkeletalAnimaID(ulid);
     console.log(`${ulid}: Energy ${(dancer.getDanceInfo().energy * 100).toFixed(0)}%`);
 });
+```
+
+### Different BPM, Same Choreography
+
+```javascript
+const ulid = '01HQZM3K7X9YF2NW8TBVKJD6PQ';
+
+// Same ULID, different speeds
+const slowDancer = new SkeletalAnimaID(ulid, 80);   // Slow tempo
+const normalDancer = new SkeletalAnimaID(ulid, 120); // Normal tempo
+const fastDancer = new SkeletalAnimaID(ulid, 160);   // Fast tempo
+
+// All three dancers have identical move sequences, just different speeds!
+console.log('Slow:', slowDancer.getDanceInfo().moves[0]);
+console.log('Normal:', normalDancer.getDanceInfo().moves[0]);
+console.log('Fast:', fastDancer.getDanceInfo().moves[0]);
+// All three will log the same move description
 ```
 
 ### Custom Styling
@@ -286,12 +346,13 @@ Open `index.html` in a browser and verify:
 
 ## Roadmap
 
+- [x] ~~Music integration~~ (✅ Beat detection implemented!)
 - [ ] Add more dance styles (robot, swing, disco)
 - [ ] Export animation as GIF/video
 - [ ] Custom color schemes
 - [ ] Facial expressions
 - [ ] Multiple dancer synchronization
-- [ ] Music integration
+- [ ] Save/load custom BPM presets
 
 ## Credits
 
