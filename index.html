@@ -266,6 +266,23 @@
             transform: scale(1.05);
         }
 
+        .fibonacci-controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10000;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: #ffe216;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .fibonacci-controls div {
+            margin: 5px 0;
+        }
+
         @media (max-width: 1024px) {
             .main-view {
                 grid-template-columns: 1fr;
@@ -1126,6 +1143,7 @@
         // Fibonacci Spiral Mode
         let fibonacciMode = false;
         let fibonacciContainer = null;
+        let fibonacciSizeReversed = false; // false = small to large, true = large to small
 
         function generateFibonacci(n) {
             const fib = [1, 1];
@@ -1158,8 +1176,17 @@
             exitButton.textContent = 'Exit Fibonacci Mode';
             exitButton.onclick = exitFibonacciMode;
 
+            const controls = document.createElement('div');
+            controls.className = 'fibonacci-controls';
+            controls.innerHTML = `
+                <div><strong>Fibonacci Mode Controls:</strong></div>
+                <div>R - Toggle size direction</div>
+                <div>ESC - Exit mode</div>
+            `;
+
             fibonacciContainer.appendChild(container);
             fibonacciContainer.appendChild(exitButton);
+            fibonacciContainer.appendChild(controls);
             document.body.appendChild(fibonacciContainer);
 
             // Generate Fibonacci spiral
@@ -1180,31 +1207,34 @@
             const centerX = width / 2;
             const centerY = height / 2;
 
-            // Generate Fibonacci numbers for sizing
-            const fibNumbers = generateFibonacci(20);
-
-            // Calculate how many dancers we can fit
-            const maxDancers = 30;
+            // Calculate how many dancers we need to fill the screen
+            const maxDancers = 50; // Increased from 30
 
             // Golden ratio for spiral
             const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees in radians
 
+            // Calculate radius multiplier to fill entire screen
+            const screenDiagonal = Math.sqrt(width * width + height * height);
+            const radiusMultiplier = screenDiagonal / Math.sqrt(maxDancers) / 1.5; // Dynamic scaling
+
             for (let i = 0; i < maxDancers; i++) {
                 // Calculate position using Fibonacci spiral (Fermat's spiral)
                 const angle = i * goldenAngle;
-                const radius = 90 * Math.sqrt(i); // Spiral expands with square root across screen
+                const radius = radiusMultiplier * Math.sqrt(i); // Spiral fills entire screen
 
                 const x = centerX + radius * Math.cos(angle);
                 const y = centerY + radius * Math.sin(angle);
 
-                // Get Fibonacci size (cycle through Fibonacci numbers)
-                const fibIndex = i % fibNumbers.length;
-                const fibSize = fibNumbers[fibIndex];
+                // Calculate size based on position in spiral (0 to 1)
+                const progress = i / (maxDancers - 1);
 
-                // Normalize size to a reasonable range (30-180px)
-                const minSize = 30;
-                const maxSize = 180;
-                const normalizedSize = minSize + (fibSize / fibNumbers[fibNumbers.length - 1]) * (maxSize - minSize);
+                // Size variation: from small to large OR large to small
+                let sizeProgress = fibonacciSizeReversed ? (1 - progress) : progress;
+
+                // Larger overall sizes: 60px to 350px (much bigger than before!)
+                const minSize = 60;
+                const maxSize = 350;
+                const normalizedSize = minSize + sizeProgress * (maxSize - minSize);
 
                 // Generate random ULID for this dancer
                 const chars = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -1243,10 +1273,20 @@
                 }
             });
 
-            // Exit Fibonacci mode on Escape key
+            // Keyboard controls for Fibonacci mode
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && fibonacciMode) {
+                if (!fibonacciMode) return;
+
+                if (e.key === 'Escape') {
                     exitFibonacciMode();
+                } else if (e.key === 'r' || e.key === 'R') {
+                    // Toggle size direction and regenerate spiral
+                    fibonacciSizeReversed = !fibonacciSizeReversed;
+                    const container = document.querySelector('.fibonacci-container');
+                    if (container) {
+                        container.innerHTML = '';
+                        createFibonacciSpiral(container);
+                    }
                 }
             });
         });
