@@ -436,6 +436,7 @@
         let audioContext = null;
         let analyser = null;
         let microphone = null;
+        let lowpassFilter = null;
         let javascriptNode = null;
         let isListening = false;
         let currentBPM = 120;
@@ -444,7 +445,9 @@
         let beatTimes = [];
         let lastBeatTime = 0;
         let energyHistory = [];
+        let energyBuffer = []; // Buffer for autocorrelation
         const ENERGY_HISTORY_SIZE = 43; // ~1 second at 44100/1024 sample rate
+        const ENERGY_BUFFER_SIZE = 150; // ~3.5 seconds for autocorrelation
         const BPM_HISTORY_SIZE = 8; // Require stability over 8 beats
         const BPM_TOLERANCE = 3; // BPM must differ by at least this much to trigger update
 
@@ -463,12 +466,21 @@
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 analyser = audioContext.createAnalyser();
                 microphone = audioContext.createMediaStreamSource(stream);
+
+                // Lowpass filter for bass frequencies (20-250Hz)
+                lowpassFilter = audioContext.createBiquadFilter();
+                lowpassFilter.type = 'lowpass';
+                lowpassFilter.frequency.value = 250; // Cut off above 250Hz
+                lowpassFilter.Q.value = 1; // Standard Q factor
+
                 javascriptNode = audioContext.createScriptProcessor(1024, 1, 1);
 
                 analyser.smoothingTimeConstant = 0.3;
-                analyser.fftSize = 1024;
+                analyser.fftSize = 2048; // Increased for better frequency resolution
 
-                microphone.connect(analyser);
+                // Signal chain: microphone -> lowpass -> analyser -> scriptProcessor
+                microphone.connect(lowpassFilter);
+                lowpassFilter.connect(analyser);
                 analyser.connect(javascriptNode);
                 javascriptNode.connect(audioContext.destination);
 
@@ -496,6 +508,7 @@
                     javascriptNode.onaudioprocess = null;
                 }
                 if (analyser) analyser.disconnect();
+                if (lowpassFilter) lowpassFilter.disconnect();
                 if (microphone) {
                     microphone.disconnect();
                     const tracks = microphone.mediaStream.getTracks();
@@ -505,6 +518,7 @@
 
                 audioContext = null;
                 analyser = null;
+                lowpassFilter = null;
                 microphone = null;
                 javascriptNode = null;
             }
@@ -517,8 +531,78 @@
             currentBPM = 120;
             confirmedBPM = 120;
             bpmHistory = [];
+            energyBuffer = [];
+            beatTimes = [];
             startBeatSync(120);
             updateDancerBPM(120, false);
+        }
+
+        // Autocorrelation for finding periodic patterns in energy signal
+        function autocorrelate(buffer, sampleRate) {
+            const minBPM = 60;
+            const maxBPM = 200;
+            const minLag = Math.floor((60 / maxBPM) * sampleRate);
+            const maxLag = Math.floor((60 / minBPM) * sampleRate);
+
+            let bestCorrelation = 0;
+            let bestLag = minLag;
+
+            for (let lag = minLag; lag < Math.min(maxLag, buffer.length / 2); lag++) {
+                let correlation = 0;
+                for (let i = 0; i < buffer.length - lag; i++) {
+                    correlation += buffer[i] * buffer[i + lag];
+                }
+                correlation /= (buffer.length - lag);
+
+                if (correlation > bestCorrelation) {
+                    bestCorrelation = correlation;
+                    bestLag = lag;
+                }
+            }
+
+            // Convert lag to BPM
+            const bpm = Math.round((60 / bestLag) * sampleRate);
+            return { bpm, confidence: bestCorrelation };
+        }
+
+        // Improved interval clustering using k-means style approach
+        function clusterIntervals(intervals) {
+            if (intervals.length < 3) return null;
+
+            // Remove extreme outliers first (> 2x or < 0.5x median)
+            const sorted = [...intervals].sort((a, b) => a - b);
+            const median = sorted[Math.floor(sorted.length / 2)];
+            const filtered = intervals.filter(i => i >= median * 0.5 && i <= median * 2);
+
+            if (filtered.length < 3) return null;
+
+            // Find main cluster by grouping similar intervals
+            const clusters = [];
+            const tolerance = 0.15; // 15% tolerance
+
+            for (const interval of filtered) {
+                let foundCluster = false;
+                for (const cluster of clusters) {
+                    const avgInterval = cluster.sum / cluster.count;
+                    if (Math.abs(interval - avgInterval) / avgInterval <= tolerance) {
+                        cluster.sum += interval;
+                        cluster.count++;
+                        cluster.intervals.push(interval);
+                        foundCluster = true;
+                        break;
+                    }
+                }
+                if (!foundCluster) {
+                    clusters.push({ sum: interval, count: 1, intervals: [interval] });
+                }
+            }
+
+            // Find largest cluster
+            clusters.sort((a, b) => b.count - a.count);
+            const mainCluster = clusters[0];
+
+            // Return weighted average of main cluster
+            return mainCluster.sum / mainCluster.count;
         }
 
         function detectBeat() {
@@ -526,71 +610,112 @@
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
 
-            // Calculate energy in the low-mid frequency range (bass and rhythm)
+            // Calculate energy (all frequencies now, since we're using lowpass filter)
             let energy = 0;
-            const lowFreqEnd = Math.floor(bufferLength * 0.3); // Focus on lower frequencies
-            for (let i = 0; i < lowFreqEnd; i++) {
-                energy += dataArray[i];
+            for (let i = 0; i < bufferLength; i++) {
+                energy += dataArray[i] * dataArray[i]; // Use squared energy
             }
-            energy /= lowFreqEnd;
+            energy = Math.sqrt(energy / bufferLength); // RMS energy
 
+            // Update energy history for adaptive threshold
             energyHistory.push(energy);
             if (energyHistory.length > ENERGY_HISTORY_SIZE) {
                 energyHistory.shift();
             }
 
-            // Calculate average energy
-            const avgEnergy = energyHistory.reduce((a, b) => a + b, 0) / energyHistory.length;
+            // Update energy buffer for autocorrelation
+            energyBuffer.push(energy);
+            if (energyBuffer.length > ENERGY_BUFFER_SIZE) {
+                energyBuffer.shift();
+            }
 
-            // Detect beat: current energy is significantly higher than average
-            const threshold = 1.3;
+            // Calculate adaptive threshold based on variance
+            const avgEnergy = energyHistory.reduce((a, b) => a + b, 0) / energyHistory.length;
+            const variance = energyHistory.reduce((sum, e) => sum + Math.pow(e - avgEnergy, 2), 0) / energyHistory.length;
+            const stdDev = Math.sqrt(variance);
+
+            // Dynamic threshold: higher variance = lower multiplier (more sensitive)
+            const baseThreshold = 1.3;
+            const varianceAdjustment = Math.max(0.1, Math.min(0.5, stdDev / avgEnergy));
+            const threshold = avgEnergy * (baseThreshold + varianceAdjustment);
+
             const now = Date.now();
             const timeSinceLastBeat = now - lastBeatTime;
 
-            if (energy > avgEnergy * threshold && timeSinceLastBeat > 200) { // Minimum 200ms between beats
+            // Detect beat with adaptive threshold
+            if (energy > threshold && timeSinceLastBeat > 200) {
                 lastBeatTime = now;
                 beatTimes.push(now);
 
-                // Keep only last 16 beats for BPM calculation
-                if (beatTimes.length > 16) {
+                // Keep only last 20 beats for better statistics
+                if (beatTimes.length > 20) {
                     beatTimes.shift();
                 }
 
-                // Calculate BPM from beat intervals
-                if (beatTimes.length >= 4) {
+                // Calculate BPM using both methods
+                let detectedBPM = null;
+
+                // Method 1: Interval clustering (for immediate beats)
+                if (beatTimes.length >= 6) {
                     const intervals = [];
                     for (let i = 1; i < beatTimes.length; i++) {
                         intervals.push(beatTimes[i] - beatTimes[i - 1]);
                     }
 
-                    // Use median interval to avoid outliers
-                    intervals.sort((a, b) => a - b);
-                    const medianInterval = intervals[Math.floor(intervals.length / 2)];
-                    const detectedBPM = Math.round(60000 / medianInterval);
+                    const clusteredInterval = clusterIntervals(intervals);
+                    if (clusteredInterval) {
+                        detectedBPM = Math.round(60000 / clusteredInterval);
+                    }
+                }
 
-                    // Validate BPM range (typically 60-180 for music)
-                    if (detectedBPM >= 60 && detectedBPM <= 200) {
-                        currentBPM = detectedBPM;
+                // Method 2: Autocorrelation (for periodic verification)
+                let autocorrelationBPM = null;
+                if (energyBuffer.length >= 100) {
+                    const sampleRate = 1000 / 23.22; // Approximate sample rate (1024 samples @ 44.1kHz)
+                    const result = autocorrelate(energyBuffer, sampleRate);
+                    if (result.confidence > 0.3) { // Only use if confident
+                        autocorrelationBPM = result.bpm;
+                    }
+                }
 
-                        // Add to BPM history for smoothing
-                        bpmHistory.push(detectedBPM);
-                        if (bpmHistory.length > BPM_HISTORY_SIZE) {
-                            bpmHistory.shift();
-                        }
+                // Combine methods: prefer interval clustering but validate with autocorrelation
+                if (detectedBPM && autocorrelationBPM) {
+                    // If both methods agree (within 10%), use average
+                    if (Math.abs(detectedBPM - autocorrelationBPM) / detectedBPM < 0.1) {
+                        detectedBPM = Math.round((detectedBPM + autocorrelationBPM) / 2);
+                    }
+                    // If they disagree, check for harmonic relationship (2x or 0.5x)
+                    else if (Math.abs(detectedBPM - autocorrelationBPM * 2) / detectedBPM < 0.1) {
+                        detectedBPM = autocorrelationBPM * 2;
+                    } else if (Math.abs(detectedBPM * 2 - autocorrelationBPM) / autocorrelationBPM < 0.1) {
+                        detectedBPM = Math.round(detectedBPM);
+                    }
+                } else if (autocorrelationBPM && !detectedBPM) {
+                    detectedBPM = autocorrelationBPM;
+                }
 
-                        // Check if BPM has been stable enough to update
-                        if (bpmHistory.length >= BPM_HISTORY_SIZE) {
-                            // Calculate average of recent BPM measurements
-                            const avgBPM = Math.round(bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length);
+                // Validate and update BPM
+                if (detectedBPM && detectedBPM >= 60 && detectedBPM <= 200) {
+                    currentBPM = detectedBPM;
 
-                            // Check if all recent measurements are close to average (stable)
-                            const isStable = bpmHistory.every(bpm => Math.abs(bpm - avgBPM) <= BPM_TOLERANCE);
+                    // Add to BPM history for smoothing
+                    bpmHistory.push(detectedBPM);
+                    if (bpmHistory.length > BPM_HISTORY_SIZE) {
+                        bpmHistory.shift();
+                    }
 
-                            // Only update if stable and significantly different from current confirmed BPM
-                            if (isStable && Math.abs(avgBPM - confirmedBPM) >= BPM_TOLERANCE) {
-                                confirmedBPM = avgBPM;
-                                updateDancerBPM(confirmedBPM, true); // true = BPM changed
-                            }
+                    // Check if BPM has been stable enough to update
+                    if (bpmHistory.length >= BPM_HISTORY_SIZE) {
+                        // Calculate average of recent BPM measurements
+                        const avgBPM = Math.round(bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length);
+
+                        // Check if all recent measurements are close to average (stable)
+                        const isStable = bpmHistory.every(bpm => Math.abs(bpm - avgBPM) <= BPM_TOLERANCE);
+
+                        // Only update if stable and significantly different from current confirmed BPM
+                        if (isStable && Math.abs(avgBPM - confirmedBPM) >= BPM_TOLERANCE) {
+                            confirmedBPM = avgBPM;
+                            updateDancerBPM(confirmedBPM, true);
                         }
                     }
                 }
