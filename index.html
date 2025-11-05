@@ -22,10 +22,8 @@
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            background: white;
             border-radius: 20px;
             padding: 40px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
         }
 
         h1 {
@@ -89,7 +87,7 @@
         }
 
         .dancer-showcase {
-            background: #f8f9fa;
+            background: #4c4535;
             border-radius: 15px;
             padding: 40px;
             display: flex;
@@ -180,7 +178,7 @@
         }
 
         .gallery-item {
-            background: #f8f9fa;
+            background: #4c4535;
             border-radius: 10px;
             padding: 15px;
             text-align: center;
@@ -224,6 +222,50 @@
             opacity: 1;
         }
 
+        /* Fibonacci mode styles */
+        .fibonacci-mode {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #3d2817;
+            z-index: 9999;
+            overflow: hidden;
+        }
+
+        .fibonacci-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .fibonacci-dancer {
+            position: absolute;
+            transform-origin: center center;
+        }
+
+        .fibonacci-exit {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            padding: 15px 30px;
+            background: #ffe216;
+            color: #8b0000;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .fibonacci-exit:hover {
+            background: #ffd700;
+            transform: scale(1.05);
+        }
+
         @media (max-width: 1024px) {
             .main-view {
                 grid-template-columns: 1fr;
@@ -246,6 +288,7 @@
                     maxlength="26"
                 >
                 <button onclick="generateGallery()">Gallery +10</button>
+                <button onclick="toggleFibonacci()">Fibonacci</button>
             </div>
             <div class="input-group">
                 <button id="micButton" onclick="toggleMicrophone()">🎤 Start Beat Detection</button>
@@ -479,6 +522,7 @@
             try {
                 // Get current algorithm selection
                 currentAlgorithm = document.getElementById('algorithmSelect').value;
+                console.log('[BPM] Starting microphone with algorithm:', currentAlgorithm);
 
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -542,11 +586,15 @@
 
         async function setupRealtimeBPM() {
             try {
+                console.log('[BPM] Setting up Realtime BPM analyzer...');
+                console.log('[BPM] Available detectors:', window.BPMDetectors);
+
                 // Setup realtime-bpm-analyzer
                 realtimeBpmProcessor = await window.BPMDetectors.RealtimeBPM.createRealTimeBpmProcessor(audioContext, {
                     continuousAnalysis: true,
                     stabilizationTime: 20000
                 });
+                console.log('[BPM] Realtime BPM processor created successfully');
 
                 // Connect audio chain
                 microphone.connect(lowpassFilter);
@@ -555,10 +603,12 @@
 
                 // Listen for BPM updates
                 realtimeBpmProcessor.port.onmessage = (event) => {
+                    console.log('[BPM] Realtime message:', event.data.message, event.data.data);
                     if (event.data.message === 'BPM_STABLE' || event.data.message === 'BPM') {
                         const bpmData = event.data.data;
                         if (bpmData.bpm && bpmData.bpm.length > 0) {
                             const detectedBPM = bpmData.bpm[0].tempo;
+                            console.log('[BPM] Realtime detected BPM:', detectedBPM);
                             if (detectedBPM >= 60 && detectedBPM <= 200) {
                                 handleBPMDetection(detectedBPM);
                             }
@@ -566,7 +616,7 @@
                     }
                 };
             } catch (err) {
-                console.error('Realtime BPM setup error:', err);
+                console.error('[BPM] Realtime BPM setup error:', err);
                 document.getElementById('micStatus').textContent = 'Realtime BPM setup failed, using Simple';
                 document.getElementById('micStatus').style.color = '#d32f2f';
                 currentAlgorithm = 'simple';
@@ -680,6 +730,8 @@
             // Analyze periodically
             if (currentTime - lastAnalysisTime >= ANALYSIS_INTERVAL && audioBufferForAnalysis.length >= audioContext.sampleRate * 3) {
                 lastAnalysisTime = currentTime;
+                console.log('[BPM] Running analysis with algorithm:', currentAlgorithm);
+                console.log('[BPM] Buffer size:', audioBufferForAnalysis.length, 'samples');
 
                 if (currentAlgorithm === 'web-audio') {
                     analyzeWithWebAudio();
@@ -691,35 +743,54 @@
 
         async function analyzeWithWebAudio() {
             try {
+                console.log('[BPM] Web Audio Beat Detector - starting analysis');
+                console.log('[BPM] BeatDetector available:', window.BPMDetectors.BeatDetector);
+
                 // Create audio buffer from captured data
                 const buffer = audioContext.createBuffer(1, audioBufferForAnalysis.length, audioContext.sampleRate);
                 buffer.copyToChannel(new Float32Array(audioBufferForAnalysis), 0);
+                console.log('[BPM] Created audio buffer:', buffer.length, 'samples,', buffer.sampleRate, 'Hz');
 
                 // Use web-audio-beat-detector
                 const tempo = await window.BPMDetectors.BeatDetector.analyze(buffer);
+                console.log('[BPM] Web Audio detected tempo:', tempo);
 
                 if (tempo && tempo >= 60 && tempo <= 200) {
+                    console.log('[BPM] Valid tempo, handling detection');
                     handleBPMDetection(Math.round(tempo));
+                } else {
+                    console.log('[BPM] Tempo out of range or invalid');
                 }
             } catch (err) {
-                console.error('Web Audio Beat Detector error:', err);
+                console.error('[BPM] Web Audio Beat Detector error:', err);
+                console.error('[BPM] Error stack:', err.stack);
             }
         }
 
         async function analyzeWithMusicBeat() {
             try {
+                console.log('[BPM] Music Beat Detector - starting analysis');
+                console.log('[BPM] MusicBeatDetector available:', window.BPMDetectors.MusicBeatDetector);
+                console.log('[BPM] MusicBeatDetector.guess type:', typeof window.BPMDetectors.MusicBeatDetector.guess);
+
                 // Create audio buffer from captured data
                 const buffer = audioContext.createBuffer(1, audioBufferForAnalysis.length, audioContext.sampleRate);
                 buffer.copyToChannel(new Float32Array(audioBufferForAnalysis), 0);
+                console.log('[BPM] Created audio buffer:', buffer.length, 'samples,', buffer.sampleRate, 'Hz');
 
                 // Use music-beat-detector
                 const result = await window.BPMDetectors.MusicBeatDetector.guess(buffer);
+                console.log('[BPM] Music Beat detected result:', result);
 
                 if (result && result.bpm && result.bpm >= 60 && result.bpm <= 200) {
+                    console.log('[BPM] Valid BPM, handling detection');
                     handleBPMDetection(Math.round(result.bpm));
+                } else {
+                    console.log('[BPM] BPM out of range or invalid');
                 }
             } catch (err) {
-                console.error('Music Beat Detector error:', err);
+                console.error('[BPM] Music Beat Detector error:', err);
+                console.error('[BPM] Error stack:', err.stack);
             }
         }
 
@@ -1000,6 +1071,111 @@
             styleElement.textContent = css;
         }
 
+        // Fibonacci Spiral Mode
+        let fibonacciMode = false;
+        let fibonacciContainer = null;
+
+        function generateFibonacci(n) {
+            const fib = [1, 1];
+            for (let i = 2; i < n; i++) {
+                fib.push(fib[i - 1] + fib[i - 2]);
+            }
+            return fib;
+        }
+
+        function toggleFibonacci() {
+            if (fibonacciMode) {
+                exitFibonacciMode();
+            } else {
+                enterFibonacciMode();
+            }
+        }
+
+        function enterFibonacciMode() {
+            fibonacciMode = true;
+
+            // Create fullscreen container
+            fibonacciContainer = document.createElement('div');
+            fibonacciContainer.className = 'fibonacci-mode';
+
+            const container = document.createElement('div');
+            container.className = 'fibonacci-container';
+
+            const exitButton = document.createElement('button');
+            exitButton.className = 'fibonacci-exit';
+            exitButton.textContent = 'Exit Fibonacci Mode';
+            exitButton.onclick = exitFibonacciMode;
+
+            fibonacciContainer.appendChild(container);
+            fibonacciContainer.appendChild(exitButton);
+            document.body.appendChild(fibonacciContainer);
+
+            // Generate Fibonacci spiral
+            createFibonacciSpiral(container);
+        }
+
+        function exitFibonacciMode() {
+            fibonacciMode = false;
+            if (fibonacciContainer) {
+                document.body.removeChild(fibonacciContainer);
+                fibonacciContainer = null;
+            }
+        }
+
+        function createFibonacciSpiral(container) {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            // Generate Fibonacci numbers for sizing
+            const fibNumbers = generateFibonacci(20);
+
+            // Calculate how many dancers we can fit
+            const maxDancers = 30;
+
+            // Golden ratio for spiral
+            const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees in radians
+
+            for (let i = 0; i < maxDancers; i++) {
+                // Calculate position using Fibonacci spiral (Fermat's spiral)
+                const angle = i * goldenAngle;
+                const radius = 15 * Math.sqrt(i); // Spiral expands with square root
+
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+
+                // Get Fibonacci size (cycle through Fibonacci numbers)
+                const fibIndex = i % fibNumbers.length;
+                const fibSize = fibNumbers[fibIndex];
+
+                // Normalize size to a reasonable range (30-180px)
+                const minSize = 30;
+                const maxSize = 180;
+                const normalizedSize = minSize + (fibSize / fibNumbers[fibNumbers.length - 1]) * (maxSize - minSize);
+
+                // Generate random ULID for this dancer
+                const chars = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+                let ulid = '';
+                for (let j = 0; j < 26; j++) {
+                    ulid += chars[Math.floor(Math.random() * chars.length)];
+                }
+
+                // Create dancer
+                const dancer = new SkeletalAnimaID(ulid, currentBPM);
+                const dancerDiv = document.createElement('div');
+                dancerDiv.className = 'fibonacci-dancer';
+                dancerDiv.style.left = `${x}px`;
+                dancerDiv.style.top = `${y}px`;
+                dancerDiv.style.transform = `translate(-50%, -50%) rotate(${angle * 180 / Math.PI}deg)`;
+
+                // Generate SVG without background box
+                dancerDiv.innerHTML = dancer.generateSVG(normalizedSize);
+
+                container.appendChild(dancerDiv);
+            }
+        }
+
         window.addEventListener('load', () => {
             randomULID(); // Generate random ULID on load
 
@@ -1012,6 +1188,13 @@
                 const ulid = ulidInput.value.trim();
                 if (ulid.length === 26) {
                     generateDancer(currentBPM);
+                }
+            });
+
+            // Exit Fibonacci mode on Escape key
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && fibonacciMode) {
+                    exitFibonacciMode();
                 }
             });
         });
