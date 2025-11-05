@@ -326,7 +326,7 @@
                 </div>
                 <div class="param-item">
                     <span class="param-label">Cycle Duration:</span>
-                    <span class="param-value">4.0 sec (8 beats)</span>
+                    <span class="param-value">${((60 / bpm) * 8).toFixed(1)} sec (8 beats)</span>
                 </div>
             `;
 
@@ -345,7 +345,7 @@
                 ulid += chars[Math.floor(Math.random() * chars.length)];
             }
             document.getElementById('ulidInput').value = ulid;
-            generateDancer();
+            generateDancer(currentBPM);
         }
 
         function generateGallery() {
@@ -366,12 +366,12 @@
                     ulid += chars[Math.floor(Math.random() * chars.length)];
                 }
 
-                const dancer = new SkeletalAnimaID(ulid);
+                const dancer = new SkeletalAnimaID(ulid, currentBPM);
                 const item = document.createElement('div');
                 item.className = 'gallery-item';
                 item.onclick = () => {
                     document.getElementById('ulidInput').value = ulid;
-                    generateDancer();
+                    generateDancer(currentBPM);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 };
 
@@ -389,10 +389,11 @@
             if (bpmInterval) clearInterval(bpmInterval);
 
             const indicator = document.getElementById('bpmIndicator');
+            const beatInterval = 60000 / currentBPM; // Calculate interval based on current BPM
             bpmInterval = setInterval(() => {
                 indicator.classList.add('beat-flash');
                 setTimeout(() => indicator.classList.remove('beat-flash'), 100);
-            }, 500);
+            }, beatInterval);
         }
 
         // Beat Detection System
