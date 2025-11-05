@@ -299,8 +299,8 @@
                 <select id="algorithmSelect" style="flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; cursor: pointer;">
                     <option value="simple">Simple (Current)</option>
                     <option value="realtime">Realtime BPM Analyzer</option>
-                    <option value="web-audio">Web Audio Beat Detector</option>
-                    <option value="music-beat">Music Beat Detector</option>
+                    <option value="web-audio">Web Audio Beat Detector (analyze)</option>
+                    <option value="music-beat">Web Audio Beat Detector (guess)</option>
                 </select>
             </div>
         </div>
@@ -589,10 +589,11 @@
                 console.log('[BPM] Setting up Realtime BPM analyzer...');
                 console.log('[BPM] Available detectors:', window.BPMDetectors);
 
-                // Setup realtime-bpm-analyzer
+                // Setup realtime-bpm-analyzer with more responsive settings
                 realtimeBpmProcessor = await window.BPMDetectors.RealtimeBPM.createRealTimeBpmProcessor(audioContext, {
                     continuousAnalysis: true,
-                    stabilizationTime: 20000
+                    stabilizationTime: 10000,  // Reduced from 20s to 10s for faster response
+                    muteTimeInIndexes: 5000     // Reduced mute time between peaks
                 });
                 console.log('[BPM] Realtime BPM processor created successfully');
 
@@ -603,12 +604,30 @@
 
                 // Listen for BPM updates
                 realtimeBpmProcessor.port.onmessage = (event) => {
-                    console.log('[BPM] Realtime message:', event.data.message, event.data.data);
-                    if (event.data.message === 'BPM_STABLE' || event.data.message === 'BPM') {
-                        const bpmData = event.data.data;
+                    const { message, data } = event.data;
+
+                    // Log different message types
+                    if (message === 'BPM_STABLE') {
+                        console.log('[BPM] Realtime STABLE:', data);
+                    } else if (message === 'BPM') {
+                        // Only log every 10th BPM message to reduce noise
+                        if (!window._bpmMessageCount) window._bpmMessageCount = 0;
+                        window._bpmMessageCount++;
+                        if (window._bpmMessageCount % 10 === 0) {
+                            console.log('[BPM] Realtime BPM update:', data);
+                        }
+                    } else if (message === 'VALID_PEAK') {
+                        console.log('[BPM] Realtime detected peak:', data);
+                    } else if (message === 'ANALYZER_RESETED') {
+                        console.log('[BPM] Realtime analyzer was reset (continuous mode)');
+                    }
+
+                    // Handle BPM detection
+                    if (message === 'BPM_STABLE' || message === 'BPM') {
+                        const bpmData = data;
                         if (bpmData.bpm && bpmData.bpm.length > 0) {
                             const detectedBPM = bpmData.bpm[0].tempo;
-                            console.log('[BPM] Realtime detected BPM:', detectedBPM);
+                            console.log('[BPM] Realtime detected BPM:', detectedBPM, 'count:', bpmData.bpm[0].count);
                             if (detectedBPM >= 60 && detectedBPM <= 200) {
                                 handleBPMDetection(detectedBPM);
                             }
@@ -770,23 +789,23 @@
         async function analyzeWithMusicBeat() {
             try {
                 console.log('[BPM] Music Beat Detector - starting analysis');
-                console.log('[BPM] MusicBeatDetector available:', window.BPMDetectors.MusicBeatDetector);
-                console.log('[BPM] MusicBeatDetector.guess type:', typeof window.BPMDetectors.MusicBeatDetector.guess);
+                console.log('[BPM] BeatDetector available:', window.BPMDetectors.BeatDetector);
+                console.log('[BPM] BeatDetector.guess type:', typeof window.BPMDetectors.BeatDetector.guess);
 
                 // Create audio buffer from captured data
                 const buffer = audioContext.createBuffer(1, audioBufferForAnalysis.length, audioContext.sampleRate);
                 buffer.copyToChannel(new Float32Array(audioBufferForAnalysis), 0);
                 console.log('[BPM] Created audio buffer:', buffer.length, 'samples,', buffer.sampleRate, 'Hz');
 
-                // Use music-beat-detector
-                const result = await window.BPMDetectors.MusicBeatDetector.guess(buffer);
-                console.log('[BPM] Music Beat detected result:', result);
+                // Use web-audio-beat-detector's guess function
+                const tempo = await window.BPMDetectors.BeatDetector.guess(buffer);
+                console.log('[BPM] Music Beat detected tempo:', tempo);
 
-                if (result && result.bpm && result.bpm >= 60 && result.bpm <= 200) {
-                    console.log('[BPM] Valid BPM, handling detection');
-                    handleBPMDetection(Math.round(result.bpm));
+                if (tempo && tempo >= 60 && tempo <= 200) {
+                    console.log('[BPM] Valid tempo, handling detection');
+                    handleBPMDetection(Math.round(tempo));
                 } else {
-                    console.log('[BPM] BPM out of range or invalid');
+                    console.log('[BPM] Tempo out of range or invalid');
                 }
             } catch (err) {
                 console.error('[BPM] Music Beat Detector error:', err);
