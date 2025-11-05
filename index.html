@@ -706,7 +706,7 @@
             beatTimes = [];
             audioBufferForAnalysis = [];
             startBeatSync(120);
-            updateDancerBPM(120, false);
+            updateDancerBPM(120, false, true); // Reset to default, mark as stable
         }
 
         // Helper function to handle BPM detection from various algorithms
@@ -731,7 +731,10 @@
                     // Update if stable and different from current confirmed BPM
                     if (isStable && avgBPM !== confirmedBPM) {
                         confirmedBPM = avgBPM;
-                        updateDancerBPM(confirmedBPM, true);
+                        updateDancerBPM(confirmedBPM, true, true); // Mark as stable
+                    } else if (!isStable) {
+                        // Show detected BPM even when not stable, so user gets live feedback
+                        updateDancerBPM(avgBPM, false, false); // Mark as detecting
                     }
                 }
 
@@ -1041,7 +1044,10 @@
                         if (isStable && avgBPM !== confirmedBPM) {
                             console.log('[BPM] Simple: Updating confirmed BPM from', confirmedBPM, 'to', avgBPM);
                             confirmedBPM = avgBPM;
-                            updateDancerBPM(confirmedBPM, true);
+                            updateDancerBPM(confirmedBPM, true, true); // Mark as stable
+                        } else if (!isStable) {
+                            // Show detected BPM even when not stable, so user gets live feedback
+                            updateDancerBPM(avgBPM, false, false); // Mark as detecting
                         }
                     }
                 }
@@ -1060,8 +1066,10 @@
 
         let lastMainULID = null; // Track current ULID to know when to recreate
 
-        function updateDancerBPM(bpm, bpmChanged = false) {
-            document.getElementById('bpmIndicator').textContent = `♪ ${bpm} BPM`;
+        function updateDancerBPM(bpm, bpmChanged = false, isStable = true) {
+            // Show "~" prefix when detecting (not stable yet)
+            const prefix = isStable ? '♪' : '♪ ~';
+            document.getElementById('bpmIndicator').textContent = `${prefix} ${bpm} BPM`;
             document.querySelector('.subtitle').textContent = `Procedural Skeletal Animation at ${bpm} BPM`;
 
             // Update beat dot synchronization
