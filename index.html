@@ -112,7 +112,11 @@
         }
 
         .beat-flash {
-            background: #DC143C !important;
+            background: #DC143C !important; /* Red flash on each beat */
+        }
+
+        .bpm-change-flash {
+            background: #1E90FF !important; /* Blue flash when BPM changes */
         }
 
         .info-panel {
@@ -394,10 +398,14 @@
         let javascriptNode = null;
         let isListening = false;
         let currentBPM = 120;
+        let confirmedBPM = 120; // The stable BPM that's actually displayed
+        let bpmHistory = []; // Track recent BPM measurements for smoothing
         let beatTimes = [];
         let lastBeatTime = 0;
         let energyHistory = [];
         const ENERGY_HISTORY_SIZE = 43; // ~1 second at 44100/1024 sample rate
+        const BPM_HISTORY_SIZE = 8; // Require stability over 8 beats
+        const BPM_TOLERANCE = 3; // BPM must differ by at least this much to trigger update
 
         async function toggleMicrophone() {
             if (isListening) {
@@ -463,7 +471,9 @@
 
             // Reset to default 120 BPM
             currentBPM = 120;
-            updateDancerBPM(120);
+            confirmedBPM = 120;
+            bpmHistory = [];
+            updateDancerBPM(120, false);
         }
 
         function detectBeat() {
@@ -516,7 +526,27 @@
                     // Validate BPM range (typically 60-180 for music)
                     if (detectedBPM >= 60 && detectedBPM <= 200) {
                         currentBPM = detectedBPM;
-                        updateDancerBPM(currentBPM);
+
+                        // Add to BPM history for smoothing
+                        bpmHistory.push(detectedBPM);
+                        if (bpmHistory.length > BPM_HISTORY_SIZE) {
+                            bpmHistory.shift();
+                        }
+
+                        // Check if BPM has been stable enough to update
+                        if (bpmHistory.length >= BPM_HISTORY_SIZE) {
+                            // Calculate average of recent BPM measurements
+                            const avgBPM = Math.round(bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length);
+
+                            // Check if all recent measurements are close to average (stable)
+                            const isStable = bpmHistory.every(bpm => Math.abs(bpm - avgBPM) <= BPM_TOLERANCE);
+
+                            // Only update if stable and significantly different from current confirmed BPM
+                            if (isStable && Math.abs(avgBPM - confirmedBPM) >= BPM_TOLERANCE) {
+                                confirmedBPM = avgBPM;
+                                updateDancerBPM(confirmedBPM, true); // true = BPM changed
+                            }
+                        }
                     }
                 }
 
@@ -527,34 +557,83 @@
             }
         }
 
-        function updateDancerBPM(bpm) {
+        let lastMainULID = null; // Track current ULID to know when to recreate
+
+        function updateDancerBPM(bpm, bpmChanged = false) {
             document.getElementById('bpmIndicator').textContent = `♪ ${bpm} BPM`;
             document.querySelector('.subtitle').textContent = `Procedural Skeletal Animation at ${bpm} BPM`;
 
-            // Update main dancer in real-time
+            // Calculate new cycle duration
+            const newCycleDuration = (60 / bpm) * 8;
+
+            // Update main dancer
             const ulid = document.getElementById('ulidInput').value.trim();
             if (ulid.length === 26) {
                 lastGeneratedBPM = bpm;
-                const dancer = new SkeletalAnimaID(ulid, bpm);
-                document.getElementById('mainDancer').innerHTML = dancer.generateSVG(250);
+
+                // Check if ULID changed - only recreate if necessary
+                if (ulid !== lastMainULID) {
+                    // ULID changed - need to regenerate completely
+                    lastMainULID = ulid;
+                    const dancer = new SkeletalAnimaID(ulid, bpm);
+                    document.getElementById('mainDancer').innerHTML = dancer.generateSVG(250);
+                } else {
+                    // Same ULID - just update animation duration without resetting
+                    updateAnimationDuration('mainDancer', ulid, newCycleDuration);
+                }
 
                 // Update cycle duration in params
                 const cycleDurationElement = document.querySelector('#params .param-item:last-child .param-value');
                 if (cycleDurationElement) {
-                    cycleDurationElement.textContent = `${((60 / bpm) * 8).toFixed(1)} sec (8 beats)`;
+                    cycleDurationElement.textContent = `${newCycleDuration.toFixed(1)} sec (8 beats)`;
                 }
             }
 
-            // Update all dancers in gallery in real-time
+            // Update all dancers in gallery - also update durations only
             const galleryItems = document.querySelectorAll('.gallery-item[data-ulid]');
             galleryItems.forEach(item => {
                 const itemULID = item.getAttribute('data-ulid');
-                const dancer = new SkeletalAnimaID(itemULID, bpm);
                 const avatarDiv = item.querySelector('.gallery-avatar');
                 if (avatarDiv) {
-                    avatarDiv.innerHTML = dancer.generateSVG(100);
+                    updateAnimationDuration(null, itemULID, newCycleDuration, avatarDiv);
                 }
             });
+
+            // Flash indicator blue if BPM changed
+            if (bpmChanged) {
+                const indicator = document.getElementById('bpmIndicator');
+                indicator.classList.add('bpm-change-flash');
+                setTimeout(() => indicator.classList.remove('bpm-change-flash'), 150);
+            }
+        }
+
+        function updateAnimationDuration(containerId, ulid, duration, containerElement = null) {
+            // Find the SVG container
+            let svg;
+            if (containerElement) {
+                svg = containerElement.querySelector('svg');
+            } else if (containerId) {
+                const container = document.getElementById(containerId);
+                svg = container ? container.querySelector('svg') : null;
+            }
+
+            if (!svg) return;
+
+            // Find the style element within the SVG
+            const styleElement = svg.querySelector('style');
+            if (!styleElement) return;
+
+            // Update all animation durations in the CSS
+            let css = styleElement.textContent;
+
+            // Replace animation durations - they follow pattern: "animation: <name> <duration>s ease-in-out infinite"
+            // We need to match the pattern and replace the duration
+            const animationPattern = /animation:\s*([a-zA-Z0-9\-]+)\s+[\d.]+s\s+ease-in-out\s+infinite/g;
+            css = css.replace(animationPattern, (match, animName) => {
+                return `animation: ${animName} ${duration}s ease-in-out infinite`;
+            });
+
+            styleElement.textContent = css;
         }
 
         window.addEventListener('load', () => {
