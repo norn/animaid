@@ -711,8 +711,8 @@
                     // Check if all recent measurements are close to average (stable)
                     const isStable = bpmHistory.every(bpm => Math.abs(bpm - avgBPM) <= BPM_TOLERANCE);
 
-                    // Only update if stable and significantly different from current confirmed BPM
-                    if (isStable && Math.abs(avgBPM - confirmedBPM) >= BPM_TOLERANCE) {
+                    // Update if stable and different from current confirmed BPM
+                    if (isStable && avgBPM !== confirmedBPM) {
                         confirmedBPM = avgBPM;
                         updateDancerBPM(confirmedBPM, true);
                     }
@@ -766,9 +766,23 @@
                 console.log('[BPM] BeatDetector available:', window.BPMDetectors.BeatDetector);
 
                 // Create audio buffer from captured data
+                const channelData = new Float32Array(audioBufferForAnalysis);
                 const buffer = audioContext.createBuffer(1, audioBufferForAnalysis.length, audioContext.sampleRate);
-                buffer.copyToChannel(new Float32Array(audioBufferForAnalysis), 0);
+                buffer.copyToChannel(channelData, 0);
+
+                // Calculate audio statistics
+                let sum = 0, sumSquares = 0, max = 0;
+                for (let i = 0; i < channelData.length; i++) {
+                    const val = Math.abs(channelData[i]);
+                    sum += val;
+                    sumSquares += val * val;
+                    max = Math.max(max, val);
+                }
+                const avg = sum / channelData.length;
+                const rms = Math.sqrt(sumSquares / channelData.length);
+
                 console.log('[BPM] Created audio buffer:', buffer.length, 'samples,', buffer.sampleRate, 'Hz');
+                console.log('[BPM] Audio stats - avg:', avg.toFixed(4), 'rms:', rms.toFixed(4), 'max:', max.toFixed(4));
 
                 // Use web-audio-beat-detector
                 const tempo = await window.BPMDetectors.BeatDetector.analyze(buffer);
@@ -793,9 +807,23 @@
                 console.log('[BPM] BeatDetector.guess type:', typeof window.BPMDetectors.BeatDetector.guess);
 
                 // Create audio buffer from captured data
+                const channelData = new Float32Array(audioBufferForAnalysis);
                 const buffer = audioContext.createBuffer(1, audioBufferForAnalysis.length, audioContext.sampleRate);
-                buffer.copyToChannel(new Float32Array(audioBufferForAnalysis), 0);
+                buffer.copyToChannel(channelData, 0);
+
+                // Calculate audio statistics
+                let sum = 0, sumSquares = 0, max = 0;
+                for (let i = 0; i < channelData.length; i++) {
+                    const val = Math.abs(channelData[i]);
+                    sum += val;
+                    sumSquares += val * val;
+                    max = Math.max(max, val);
+                }
+                const avg = sum / channelData.length;
+                const rms = Math.sqrt(sumSquares / channelData.length);
+
                 console.log('[BPM] Created audio buffer:', buffer.length, 'samples,', buffer.sampleRate, 'Hz');
+                console.log('[BPM] Audio stats - avg:', avg.toFixed(4), 'rms:', rms.toFixed(4), 'max:', max.toFixed(4));
 
                 // Use web-audio-beat-detector's guess function
                 const tempo = await window.BPMDetectors.BeatDetector.guess(buffer);
@@ -922,6 +950,7 @@
             if (energy > threshold && timeSinceLastBeat > 200) {
                 lastBeatTime = now;
                 beatTimes.push(now);
+                console.log('[BPM] Simple: Beat detected! energy:', energy.toFixed(2), 'threshold:', threshold.toFixed(2));
 
                 // Keep only last 20 beats for better statistics
                 if (beatTimes.length > 20) {
@@ -972,6 +1001,7 @@
 
                 // Validate and update BPM
                 if (detectedBPM && detectedBPM >= 60 && detectedBPM <= 200) {
+                    console.log('[BPM] Simple: Detected BPM:', detectedBPM, 'beatTimes.length:', beatTimes.length);
                     currentBPM = detectedBPM;
 
                     // Add to BPM history for smoothing
@@ -988,8 +1018,11 @@
                         // Check if all recent measurements are close to average (stable)
                         const isStable = bpmHistory.every(bpm => Math.abs(bpm - avgBPM) <= BPM_TOLERANCE);
 
-                        // Only update if stable and significantly different from current confirmed BPM
-                        if (isStable && Math.abs(avgBPM - confirmedBPM) >= BPM_TOLERANCE) {
+                        console.log('[BPM] Simple: avgBPM:', avgBPM, 'isStable:', isStable, 'confirmedBPM:', confirmedBPM, 'history:', bpmHistory);
+
+                        // Update if stable and different from current confirmed BPM
+                        if (isStable && avgBPM !== confirmedBPM) {
+                            console.log('[BPM] Simple: Updating confirmed BPM from', confirmedBPM, 'to', avgBPM);
                             confirmedBPM = avgBPM;
                             updateDancerBPM(confirmedBPM, true);
                         }
