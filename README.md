@@ -4,7 +4,7 @@
 
 AnimaID generates unique, dancing skeletal avatars based on ULID (Universally Unique Lexicographically Sortable Identifier) strings. Each ULID produces a deterministic, reproducible animation with distinct characteristics.
 
-[**Live Demo**](https://yourusername.github.io/animaid/)
+[**Live Demo**](https://norn.github.io/animaid/)
 
 ## Features
 
@@ -271,7 +271,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### Development Setup
 
 ```bash
-git clone https://github.com/yourusername/animaid.git
+git clone https://github.com/norn/animaid.git
 cd animaid
 # Open index.html in your browser
 ```
@@ -295,7 +295,7 @@ Open `index.html` in a browser and verify:
 
 ## Credits
 
-Created by [Your Name](https://github.com/yourusername)
+Created by [Andrey Perliev](https://github.com/norn)
 
 Inspired by:
 - [ULID Spec](https://github.com/ulid/spec)
@@ -304,8 +304,8 @@ Inspired by:
 
 ## Support
 
-- Report bugs: [GitHub Issues](https://github.com/yourusername/animaid/issues)
-- Questions: [GitHub Discussions](https://github.com/yourusername/animaid/discussions)
+- Report bugs: [GitHub Issues](https://github.com/norn/animaid/issues)
+- Questions: [GitHub Discussions](https://github.com/norn/animaid/discussions)
 
 ---
 
