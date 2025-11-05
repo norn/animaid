@@ -215,26 +215,13 @@
             height: 20px;
             background: #DC143C;
             border-radius: 50%;
-            box-shadow: 0 0 10px rgba(220, 20, 60, 0.5);
+            box-shadow: 0 0 10px rgba(220, 20, 60, 0.8);
             z-index: 1000;
-            animation: beat-pulse var(--beat-duration, 0.5s) ease-in-out infinite;
-        }
-
-        @keyframes beat-pulse {
-            0%, 100% {
-                opacity: 0.3;
-                transform: scale(0.8);
-            }
-            50% {
-                opacity: 1;
-                transform: scale(1.2);
-            }
+            opacity: 0;
         }
 
         .beat-dot.beat-active {
-            opacity: 1 !important;
-            transform: scale(1.5) !important;
-            box-shadow: 0 0 20px rgba(220, 20, 60, 0.8);
+            opacity: 1;
         }
 
         @media (max-width: 1024px) {
@@ -291,12 +278,29 @@
     <script src="animaid.js"></script>
     <script>
         let lastGeneratedBPM = 120;
+        let beatInterval = null;
 
-        // Update beat dot animation speed based on BPM
-        function updateBeatDotSpeed(bpm) {
-            const beatDuration = 60 / bpm; // Duration of one beat in seconds
+        // Start precise beat synchronization
+        function startBeatSync(bpm) {
+            stopBeatSync();
+            const beatDuration = (60 / bpm) * 1000; // Convert to milliseconds
             const beatDot = document.getElementById('beatDot');
-            beatDot.style.setProperty('--beat-duration', `${beatDuration}s`);
+
+            beatInterval = setInterval(() => {
+                beatDot.classList.add('beat-active');
+                setTimeout(() => {
+                    beatDot.classList.remove('beat-active');
+                }, 100); // Show for 100ms
+            }, beatDuration);
+        }
+
+        function stopBeatSync() {
+            if (beatInterval) {
+                clearInterval(beatInterval);
+                beatInterval = null;
+            }
+            const beatDot = document.getElementById('beatDot');
+            beatDot.classList.remove('beat-active');
         }
 
         function generateDancer(bpm = currentBPM) {
@@ -475,6 +479,9 @@
                 document.getElementById('micStatus').textContent = 'Listening...';
                 document.getElementById('micStatus').style.color = '#667eea';
 
+                // Stop automatic beat sync when using microphone
+                stopBeatSync();
+
             } catch (err) {
                 console.error('Microphone access error:', err);
                 document.getElementById('micStatus').textContent = 'Microphone access denied';
@@ -510,6 +517,7 @@
             currentBPM = 120;
             confirmedBPM = 120;
             bpmHistory = [];
+            startBeatSync(120);
             updateDancerBPM(120, false);
         }
 
@@ -592,7 +600,7 @@
                 indicator.classList.add('beat-flash');
                 setTimeout(() => indicator.classList.remove('beat-flash'), 100);
 
-                // Flash the beat dot
+                // Flash the beat dot when microphone detects beat
                 const beatDot = document.getElementById('beatDot');
                 beatDot.classList.add('beat-active');
                 setTimeout(() => beatDot.classList.remove('beat-active'), 100);
@@ -605,8 +613,8 @@
             document.getElementById('bpmIndicator').textContent = `♪ ${bpm} BPM`;
             document.querySelector('.subtitle').textContent = `Procedural Skeletal Animation at ${bpm} BPM`;
 
-            // Update beat dot speed
-            updateBeatDotSpeed(bpm);
+            // Update beat dot synchronization
+            startBeatSync(bpm);
 
             // Calculate new cycle duration
             const newCycleDuration = (60 / bpm) * 8;
@@ -684,8 +692,8 @@
         window.addEventListener('load', () => {
             randomULID(); // Generate random ULID on load
 
-            // Initialize beat dot speed
-            updateBeatDotSpeed(currentBPM);
+            // Initialize beat dot synchronization
+            startBeatSync(currentBPM);
 
             // Add auto-update on ULID input change
             const ulidInput = document.getElementById('ulidInput');
