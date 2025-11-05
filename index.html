@@ -507,7 +507,7 @@
         let analyser = null;
         let microphone = null;
         let lowpassFilter = null;
-        let javascriptNode = null;
+        let workletNode = null;
         let isListening = false;
         let currentBPM = 120;
         let confirmedBPM = 120; // The stable BPM that's actually displayed
@@ -561,19 +561,26 @@
                     await setupRealtimeBPM();
                 } else {
                     // For simple, web-audio, and music-beat algorithms
-                    javascriptNode = audioContext.createScriptProcessor(1024, 1, 1);
+                    // Load and create AudioWorklet (modern replacement for ScriptProcessorNode)
+                    await audioContext.audioWorklet.addModule('audio-processor-worklet.js');
+                    workletNode = new AudioWorkletNode(audioContext, 'bpm-audio-processor');
 
-                    // Signal chain: microphone -> lowpass -> analyser -> scriptProcessor
+                    // Signal chain: microphone -> lowpass -> analyser -> worklet
                     microphone.connect(lowpassFilter);
                     lowpassFilter.connect(analyser);
-                    analyser.connect(javascriptNode);
-                    javascriptNode.connect(audioContext.destination);
+                    analyser.connect(workletNode);
+                    workletNode.connect(audioContext.destination);
 
-                    if (currentAlgorithm === 'simple') {
-                        javascriptNode.onaudioprocess = detectBeat;
-                    } else if (currentAlgorithm === 'web-audio' || currentAlgorithm === 'music-beat') {
-                        javascriptNode.onaudioprocess = captureAudioBuffer;
-                    }
+                    // Set up message handler for audio data from worklet
+                    workletNode.port.onmessage = (event) => {
+                        if (event.data.type === 'audioData') {
+                            if (currentAlgorithm === 'simple') {
+                                detectBeatFromWorklet(event.data.data);
+                            } else if (currentAlgorithm === 'web-audio' || currentAlgorithm === 'music-beat') {
+                                captureAudioBufferFromWorklet(event.data.data);
+                            }
+                        }
+                    };
                 }
 
                 isListening = true;
@@ -657,21 +664,27 @@
                 document.getElementById('micStatus').style.color = '#d32f2f';
                 currentAlgorithm = 'simple';
 
-                // Fallback to simple algorithm
-                javascriptNode = audioContext.createScriptProcessor(1024, 1, 1);
+                // Fallback to simple algorithm using AudioWorklet
+                await audioContext.audioWorklet.addModule('audio-processor-worklet.js');
+                workletNode = new AudioWorkletNode(audioContext, 'bpm-audio-processor');
                 microphone.connect(lowpassFilter);
                 lowpassFilter.connect(analyser);
-                analyser.connect(javascriptNode);
-                javascriptNode.connect(audioContext.destination);
-                javascriptNode.onaudioprocess = detectBeat;
+                analyser.connect(workletNode);
+                workletNode.connect(audioContext.destination);
+                workletNode.port.onmessage = (event) => {
+                    if (event.data.type === 'audioData') {
+                        detectBeatFromWorklet(event.data.data);
+                    }
+                };
             }
         }
 
         function stopMicrophone() {
             if (audioContext) {
-                if (javascriptNode) {
-                    javascriptNode.disconnect();
-                    javascriptNode.onaudioprocess = null;
+                if (workletNode) {
+                    workletNode.disconnect();
+                    workletNode.port.onmessage = null;
+                    workletNode = null;
                 }
                 if (realtimeBpmProcessor) {
                     realtimeBpmProcessor.disconnect();
@@ -691,7 +704,7 @@
                 analyser = null;
                 lowpassFilter = null;
                 microphone = null;
-                javascriptNode = null;
+                workletNode = null;
             }
 
             isListening = false;
@@ -746,6 +759,34 @@
                 const beatDot = document.getElementById('beatDot');
                 beatDot.classList.add('beat-active');
                 setTimeout(() => beatDot.classList.remove('beat-active'), 100);
+            }
+        }
+
+        // Process audio data from worklet for buffer capture (web-audio and music-beat algorithms)
+        function captureAudioBufferFromWorklet(audioData) {
+            // audioData is Float32Array from the worklet
+            const currentTime = Date.now();
+
+            // Add to buffer
+            audioBufferForAnalysis.push(...audioData);
+
+            // Keep only last 10 seconds of audio
+            const maxSamples = audioContext.sampleRate * 10;
+            if (audioBufferForAnalysis.length > maxSamples) {
+                audioBufferForAnalysis = audioBufferForAnalysis.slice(-maxSamples);
+            }
+
+            // Analyze periodically
+            if (currentTime - lastAnalysisTime >= ANALYSIS_INTERVAL && audioBufferForAnalysis.length >= audioContext.sampleRate * 3) {
+                lastAnalysisTime = currentTime;
+                console.log('[BPM] Running analysis with algorithm:', currentAlgorithm);
+                console.log('[BPM] Buffer size:', audioBufferForAnalysis.length, 'samples');
+
+                if (currentAlgorithm === 'web-audio') {
+                    analyzeWithWebAudio();
+                } else if (currentAlgorithm === 'music-beat') {
+                    analyzeWithMusicBeat();
+                }
             }
         }
 
@@ -927,6 +968,144 @@
 
             // Return weighted average of main cluster
             return mainCluster.sum / mainCluster.count;
+        }
+
+        // Process audio data from worklet for beat detection (simple algorithm)
+        function detectBeatFromWorklet(audioData) {
+            // audioData is Float32Array from the worklet
+            // We still use the analyser for frequency data
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate energy (all frequencies now, since we're using lowpass filter)
+            let energy = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                energy += dataArray[i] * dataArray[i]; // Use squared energy
+            }
+            energy = Math.sqrt(energy / bufferLength); // RMS energy
+
+            // Update energy history for adaptive threshold
+            energyHistory.push(energy);
+            if (energyHistory.length > ENERGY_HISTORY_SIZE) {
+                energyHistory.shift();
+            }
+
+            // Update energy buffer for autocorrelation
+            energyBuffer.push(energy);
+            if (energyBuffer.length > ENERGY_BUFFER_SIZE) {
+                energyBuffer.shift();
+            }
+
+            // Calculate adaptive threshold based on variance
+            const avgEnergy = energyHistory.reduce((a, b) => a + b, 0) / energyHistory.length;
+            const variance = energyHistory.reduce((sum, e) => sum + Math.pow(e - avgEnergy, 2), 0) / energyHistory.length;
+            const stdDev = Math.sqrt(variance);
+
+            // Dynamic threshold: higher variance = lower multiplier (more sensitive)
+            const baseThreshold = 1.3;
+            const varianceAdjustment = Math.max(0.1, Math.min(0.5, stdDev / avgEnergy));
+            const threshold = avgEnergy * (baseThreshold + varianceAdjustment);
+
+            const now = Date.now();
+            const timeSinceLastBeat = now - lastBeatTime;
+
+            // Detect beat with adaptive threshold
+            if (energy > threshold && timeSinceLastBeat > 200) {
+                lastBeatTime = now;
+                beatTimes.push(now);
+                console.log('[BPM] Simple: Beat detected! energy:', energy.toFixed(2), 'threshold:', threshold.toFixed(2));
+
+                // Keep only last 20 beats for better statistics
+                if (beatTimes.length > 20) {
+                    beatTimes.shift();
+                }
+
+                // Calculate BPM using both methods
+                let detectedBPM = null;
+
+                // Method 1: Interval clustering (for immediate beats)
+                if (beatTimes.length >= 6) {
+                    const intervals = [];
+                    for (let i = 1; i < beatTimes.length; i++) {
+                        intervals.push(beatTimes[i] - beatTimes[i - 1]);
+                    }
+
+                    const clusteredInterval = clusterIntervals(intervals);
+                    if (clusteredInterval) {
+                        detectedBPM = Math.round(60000 / clusteredInterval);
+                    }
+                }
+
+                // Method 2: Autocorrelation (for periodic verification)
+                let autocorrelationBPM = null;
+                if (energyBuffer.length >= 100) {
+                    const sampleRate = 1000 / 23.22; // Approximate sample rate (1024 samples @ 44.1kHz)
+                    const result = autocorrelate(energyBuffer, sampleRate);
+                    if (result.confidence > 0.3) { // Only use if confident
+                        autocorrelationBPM = result.bpm;
+                    }
+                }
+
+                // Combine methods: prefer interval clustering but validate with autocorrelation
+                if (detectedBPM && autocorrelationBPM) {
+                    // If both methods agree (within 10%), use average
+                    if (Math.abs(detectedBPM - autocorrelationBPM) / detectedBPM < 0.1) {
+                        detectedBPM = Math.round((detectedBPM + autocorrelationBPM) / 2);
+                    }
+                    // If they disagree, check for harmonic relationship (2x or 0.5x)
+                    else if (Math.abs(detectedBPM - autocorrelationBPM * 2) / detectedBPM < 0.1) {
+                        detectedBPM = autocorrelationBPM * 2;
+                    } else if (Math.abs(detectedBPM * 2 - autocorrelationBPM) / autocorrelationBPM < 0.1) {
+                        detectedBPM = Math.round(detectedBPM);
+                    }
+                } else if (autocorrelationBPM && !detectedBPM) {
+                    detectedBPM = autocorrelationBPM;
+                }
+
+                // Validate and update BPM
+                if (detectedBPM && detectedBPM >= 60 && detectedBPM <= 200) {
+                    console.log('[BPM] Simple: Detected BPM:', detectedBPM, 'beatTimes.length:', beatTimes.length);
+                    currentBPM = detectedBPM;
+
+                    // Add to BPM history for smoothing
+                    bpmHistory.push(detectedBPM);
+                    if (bpmHistory.length > BPM_HISTORY_SIZE) {
+                        bpmHistory.shift();
+                    }
+
+                    // Check if BPM has been stable enough to update
+                    if (bpmHistory.length >= BPM_HISTORY_SIZE) {
+                        // Calculate average of recent BPM measurements
+                        const avgBPM = Math.round(bpmHistory.reduce((a, b) => a + b, 0) / bpmHistory.length);
+
+                        // Check if all recent measurements are close to average (stable)
+                        const isStable = bpmHistory.every(bpm => Math.abs(bpm - avgBPM) <= BPM_TOLERANCE);
+
+                        console.log('[BPM] Simple: avgBPM:', avgBPM, 'isStable:', isStable, 'confirmedBPM:', confirmedBPM, 'history:', bpmHistory);
+
+                        // Update if stable and different from current confirmed BPM
+                        if (isStable && avgBPM !== confirmedBPM) {
+                            console.log('[BPM] Simple: Updating confirmed BPM from', confirmedBPM, 'to', avgBPM);
+                            confirmedBPM = avgBPM;
+                            updateDancerBPM(confirmedBPM, true, true); // Mark as stable
+                        } else if (!isStable) {
+                            // Show detected BPM even when not stable, so user gets live feedback
+                            updateDancerBPM(avgBPM, false, false); // Mark as detecting
+                        }
+                    }
+                }
+
+                // Visual feedback
+                const indicator = document.getElementById('bpmIndicator');
+                indicator.classList.add('beat-flash');
+                setTimeout(() => indicator.classList.remove('beat-flash'), 100);
+
+                // Flash the beat dot when microphone detects beat
+                const beatDot = document.getElementById('beatDot');
+                beatDot.classList.add('beat-active');
+                setTimeout(() => beatDot.classList.remove('beat-active'), 100);
+            }
         }
 
         function detectBeat() {
