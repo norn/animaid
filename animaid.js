@@ -61,7 +61,7 @@ class SkeletalAnimaID {
         const styleRoll = r(7);
         let style = {};
 
-        if (styleRoll < 0.15) {
+        if (styleRoll < 0.11) {
             // Energetic, active style (hip-hop, break)
             style = {
                 armMovement: 0.8 + r(71) * 0.2,
@@ -74,7 +74,7 @@ class SkeletalAnimaID {
                 shoulderBounce: 0.6 + r(78) * 0.4,
                 rhythmVariation: 0.6 + r(79) * 0.4
             };
-        } else if (styleRoll < 0.30) {
+        } else if (styleRoll < 0.22) {
             // Smooth, flowing style (contemporary, lyrical)
             style = {
                 armMovement: 0.7 + r(81) * 0.3,
@@ -87,7 +87,7 @@ class SkeletalAnimaID {
                 shoulderBounce: 0.2 + r(88) * 0.3,
                 rhythmVariation: 0.2 + r(89) * 0.3
             };
-        } else if (styleRoll < 0.45) {
+        } else if (styleRoll < 0.33) {
             // Rhythmic, percussive style (step, african)
             style = {
                 armMovement: 0.4 + r(91) * 0.4,
@@ -100,7 +100,7 @@ class SkeletalAnimaID {
                 shoulderBounce: 0.5 + r(98) * 0.5,
                 rhythmVariation: 0.7 + r(99) * 0.3
             };
-        } else if (styleRoll < 0.60) {
+        } else if (styleRoll < 0.44) {
             // Latin style (salsa, samba)
             style = {
                 armMovement: 0.6 + r(101) * 0.4,
@@ -113,7 +113,7 @@ class SkeletalAnimaID {
                 shoulderBounce: 0.4 + r(108) * 0.4,
                 rhythmVariation: 0.5 + r(109) * 0.3
             };
-        } else if (styleRoll < 0.75) {
+        } else if (styleRoll < 0.55) {
             // Symmetric, structured (ballet, jazz)
             style = {
                 armMovement: 0.7 + r(111) * 0.3,
@@ -125,6 +125,45 @@ class SkeletalAnimaID {
                 hipSway: 0.2 + r(117) * 0.3,
                 shoulderBounce: 0.3 + r(118) * 0.3,
                 rhythmVariation: 0.3 + r(119) * 0.2
+            };
+        } else if (styleRoll < 0.66) {
+            // Robot - Stiff, mechanical, angular movements
+            style = {
+                armMovement: 0.6 + r(131) * 0.3,
+                legMovement: 0.5 + r(132) * 0.3,
+                bodyRotation: 0.2 + r(133) * 0.2,
+                jumpiness: 0.1 + r(134) * 0.2,
+                symmetry: 0.3 + r(135) * 0.4,
+                headMovement: 0.1 + r(136) * 0.2,
+                hipSway: r(137) * 0.1,
+                shoulderBounce: 0.1 + r(138) * 0.2,
+                rhythmVariation: 0.8 + r(139) * 0.2
+            };
+        } else if (styleRoll < 0.77) {
+            // Swing - High energy, lots of arm swinging and bounce
+            style = {
+                armMovement: 0.8 + r(141) * 0.2,
+                legMovement: 0.6 + r(142) * 0.3,
+                bodyRotation: 0.6 + r(143) * 0.4,
+                jumpiness: 0.4 + r(144) * 0.4,
+                symmetry: 0.4 + r(145) * 0.4,
+                headMovement: 0.4 + r(146) * 0.4,
+                hipSway: 0.4 + r(147) * 0.3,
+                shoulderBounce: 0.7 + r(148) * 0.3,
+                rhythmVariation: 0.4 + r(149) * 0.3
+            };
+        } else if (styleRoll < 0.88) {
+            // Disco - High arms, hip sway, body rotation, pointing moves
+            style = {
+                armMovement: 0.8 + r(151) * 0.2,
+                legMovement: 0.5 + r(152) * 0.3,
+                bodyRotation: 0.6 + r(153) * 0.4,
+                jumpiness: 0.3 + r(154) * 0.3,
+                symmetry: 0.4 + r(155) * 0.4,
+                headMovement: 0.3 + r(156) * 0.4,
+                hipSway: 0.6 + r(157) * 0.4,
+                shoulderBounce: 0.6 + r(158) * 0.4,
+                rhythmVariation: 0.4 + r(159) * 0.3
             };
         } else {
             // Random, freestyle
