@@ -102,13 +102,30 @@ The generator supports 9 distinct dance styles:
 
 ## Beat Detection
 
-The live demo includes real-time microphone beat detection:
+The live demo includes real-time microphone beat detection with multiple algorithm options:
 
 1. Click "🎤 Start Beat Detection"
-2. Play music or make rhythmic sounds
-3. All dancers sync automatically to detected BPM (60-200)
+2. Select your preferred BPM detection algorithm
+3. Play music or make rhythmic sounds
+4. All dancers sync automatically to detected BPM (60-200)
+
+### Available BPM Algorithms
+
+- **Simple (Current)**: Custom implementation using autocorrelation and interval clustering. Fast and efficient for most music.
+- **Realtime BPM Analyzer**: Uses [realtime-bpm-analyzer](https://github.com/dlepaux/realtime-bpm-analyzer) for continuous real-time analysis with stabilization.
+- **Web Audio Beat Detector**: Implements [web-audio-beat-detector](https://github.com/chrisguttandin/web-audio-beat-detector) for accurate tempo detection.
+- **Music Beat Detector**: Leverages [music-beat-detector](https://github.com/chrvadala/music-beat-detector) for comprehensive beat analysis.
 
 Features visual feedback (flashing indicator), median filtering for stability, and works best with clear rhythmic music with prominent bass.
+
+### Building the BPM Detectors
+
+If you want to modify the BPM detection algorithms:
+
+```bash
+npm install
+npm run build
+```
 
 ## Browser Compatibility
 
