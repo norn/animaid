@@ -6,12 +6,12 @@
  */
 
 class SkeletalAnimaID {
-    constructor(ulid) {
+    constructor(ulid, bpm = 120) {
         this.ulid = ulid;
         this.seed = this.hashULID(ulid);
-        this.bpm = 120;
+        this.bpm = bpm;
         this.beatsPerCycle = 8;
-        this.cycleDuration = (60 / this.bpm) * this.beatsPerCycle; // 4 seconds
+        this.cycleDuration = (60 / this.bpm) * this.beatsPerCycle;
     }
 
     hashULID(ulid) {

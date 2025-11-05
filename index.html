@@ -225,12 +225,15 @@
                     type="text"
                     id="ulidInput"
                     placeholder="Enter ULID (26 characters)"
-                    value="01HQZM3K7X9YF2NW8TBVKJD6PQ"
                     maxlength="26"
                 >
                 <button onclick="generateDancer()">Generate</button>
                 <button onclick="randomULID()">Random</button>
                 <button onclick="generateGallery()">Gallery (10)</button>
+            </div>
+            <div class="input-group">
+                <button id="micButton" onclick="toggleMicrophone()">🎤 Start Beat Detection</button>
+                <span id="micStatus" style="padding: 12px; color: #666;"></span>
             </div>
         </div>
 
@@ -258,14 +261,17 @@
 
     <script src="animaid.js"></script>
     <script>
-        function generateDancer() {
+        let lastGeneratedBPM = 120;
+
+        function generateDancer(bpm = currentBPM) {
             const ulid = document.getElementById('ulidInput').value.trim();
             if (ulid.length !== 26) {
                 alert('ULID must be exactly 26 characters!');
                 return;
             }
 
-            const dancer = new SkeletalAnimaID(ulid);
+            lastGeneratedBPM = bpm;
+            const dancer = new SkeletalAnimaID(ulid, bpm);
             const info = dancer.getDanceInfo();
 
             document.getElementById('mainDancer').innerHTML = dancer.generateSVG(250);
@@ -344,7 +350,14 @@
 
         function generateGallery() {
             const gallery = document.getElementById('gallery');
-            gallery.innerHTML = '<h2 style="grid-column: 1/-1; margin-bottom: 10px;">Gallery</h2>';
+
+            // Only add header if gallery is empty
+            if (gallery.children.length === 0) {
+                const header = document.createElement('h2');
+                header.style.cssText = 'grid-column: 1/-1; margin-bottom: 10px;';
+                header.textContent = 'Gallery';
+                gallery.appendChild(header);
+            }
 
             for (let i = 0; i < 10; i++) {
                 const chars = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -382,8 +395,163 @@
             }, 500);
         }
 
+        // Beat Detection System
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        let javascriptNode = null;
+        let isListening = false;
+        let currentBPM = 120;
+        let beatTimes = [];
+        let lastBeatTime = 0;
+        let energyHistory = [];
+        const ENERGY_HISTORY_SIZE = 43; // ~1 second at 44100/1024 sample rate
+
+        async function toggleMicrophone() {
+            if (isListening) {
+                stopMicrophone();
+            } else {
+                await startMicrophone();
+            }
+        }
+
+        async function startMicrophone() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+                javascriptNode = audioContext.createScriptProcessor(1024, 1, 1);
+
+                analyser.smoothingTimeConstant = 0.3;
+                analyser.fftSize = 1024;
+
+                microphone.connect(analyser);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+
+                javascriptNode.onaudioprocess = detectBeat;
+
+                isListening = true;
+                document.getElementById('micButton').textContent = '🎤 Stop Beat Detection';
+                document.getElementById('micStatus').textContent = 'Listening...';
+                document.getElementById('micStatus').style.color = '#667eea';
+
+            } catch (err) {
+                console.error('Microphone access error:', err);
+                document.getElementById('micStatus').textContent = 'Microphone access denied';
+                document.getElementById('micStatus').style.color = '#d32f2f';
+            }
+        }
+
+        function stopMicrophone() {
+            if (audioContext) {
+                if (javascriptNode) {
+                    javascriptNode.disconnect();
+                    javascriptNode.onaudioprocess = null;
+                }
+                if (analyser) analyser.disconnect();
+                if (microphone) {
+                    microphone.disconnect();
+                    const tracks = microphone.mediaStream.getTracks();
+                    tracks.forEach(track => track.stop());
+                }
+                audioContext.close();
+
+                audioContext = null;
+                analyser = null;
+                microphone = null;
+                javascriptNode = null;
+            }
+
+            isListening = false;
+            document.getElementById('micButton').textContent = '🎤 Start Beat Detection';
+            document.getElementById('micStatus').textContent = '';
+
+            // Reset to default 120 BPM
+            currentBPM = 120;
+            updateDancerBPM(120);
+        }
+
+        function detectBeat() {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate energy in the low-mid frequency range (bass and rhythm)
+            let energy = 0;
+            const lowFreqEnd = Math.floor(bufferLength * 0.3); // Focus on lower frequencies
+            for (let i = 0; i < lowFreqEnd; i++) {
+                energy += dataArray[i];
+            }
+            energy /= lowFreqEnd;
+
+            energyHistory.push(energy);
+            if (energyHistory.length > ENERGY_HISTORY_SIZE) {
+                energyHistory.shift();
+            }
+
+            // Calculate average energy
+            const avgEnergy = energyHistory.reduce((a, b) => a + b, 0) / energyHistory.length;
+
+            // Detect beat: current energy is significantly higher than average
+            const threshold = 1.3;
+            const now = Date.now();
+            const timeSinceLastBeat = now - lastBeatTime;
+
+            if (energy > avgEnergy * threshold && timeSinceLastBeat > 200) { // Minimum 200ms between beats
+                lastBeatTime = now;
+                beatTimes.push(now);
+
+                // Keep only last 16 beats for BPM calculation
+                if (beatTimes.length > 16) {
+                    beatTimes.shift();
+                }
+
+                // Calculate BPM from beat intervals
+                if (beatTimes.length >= 4) {
+                    const intervals = [];
+                    for (let i = 1; i < beatTimes.length; i++) {
+                        intervals.push(beatTimes[i] - beatTimes[i - 1]);
+                    }
+
+                    // Use median interval to avoid outliers
+                    intervals.sort((a, b) => a - b);
+                    const medianInterval = intervals[Math.floor(intervals.length / 2)];
+                    const detectedBPM = Math.round(60000 / medianInterval);
+
+                    // Validate BPM range (typically 60-180 for music)
+                    if (detectedBPM >= 60 && detectedBPM <= 200) {
+                        currentBPM = detectedBPM;
+                        updateDancerBPM(currentBPM);
+                    }
+                }
+
+                // Visual feedback
+                const indicator = document.getElementById('bpmIndicator');
+                indicator.classList.add('beat-flash');
+                setTimeout(() => indicator.classList.remove('beat-flash'), 100);
+            }
+        }
+
+        function updateDancerBPM(bpm) {
+            document.getElementById('bpmIndicator').textContent = `♪ ${bpm} BPM`;
+            document.querySelector('.subtitle').textContent = `Procedural Skeletal Animation at ${bpm} BPM`;
+
+            // Regenerate dancer if BPM changed significantly (more than 5 BPM difference)
+            if (Math.abs(bpm - lastGeneratedBPM) > 5) {
+                const ulid = document.getElementById('ulidInput').value.trim();
+                if (ulid.length === 26) {
+                    lastGeneratedBPM = bpm;
+                    const dancer = new SkeletalAnimaID(ulid, bpm);
+                    document.getElementById('mainDancer').innerHTML = dancer.generateSVG(250);
+                }
+            }
+        }
+
         window.addEventListener('load', () => {
-            generateDancer();
+            randomULID(); // Generate random ULID on load
         });
     </script>
 </body>
