@@ -207,6 +207,36 @@
             word-break: break-all;
         }
 
+        .beat-dot {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 20px;
+            height: 20px;
+            background: #DC143C;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(220, 20, 60, 0.5);
+            z-index: 1000;
+            animation: beat-pulse var(--beat-duration, 0.5s) ease-in-out infinite;
+        }
+
+        @keyframes beat-pulse {
+            0%, 100% {
+                opacity: 0.3;
+                transform: scale(0.8);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.2);
+            }
+        }
+
+        .beat-dot.beat-active {
+            opacity: 1 !important;
+            transform: scale(1.5) !important;
+            box-shadow: 0 0 20px rgba(220, 20, 60, 0.8);
+        }
+
         @media (max-width: 1024px) {
             .main-view {
                 grid-template-columns: 1fr;
@@ -215,6 +245,7 @@
     </style>
 </head>
 <body>
+    <div class="beat-dot" id="beatDot"></div>
     <div class="container">
         <h1>AnimaID</h1>
         <p class="subtitle">Procedural Skeletal Animation at 120 BPM</p>
@@ -260,6 +291,13 @@
     <script src="animaid.js"></script>
     <script>
         let lastGeneratedBPM = 120;
+
+        // Update beat dot animation speed based on BPM
+        function updateBeatDotSpeed(bpm) {
+            const beatDuration = 60 / bpm; // Duration of one beat in seconds
+            const beatDot = document.getElementById('beatDot');
+            beatDot.style.setProperty('--beat-duration', `${beatDuration}s`);
+        }
 
         function generateDancer(bpm = currentBPM) {
             const ulid = document.getElementById('ulidInput').value.trim();
@@ -553,6 +591,11 @@
                 const indicator = document.getElementById('bpmIndicator');
                 indicator.classList.add('beat-flash');
                 setTimeout(() => indicator.classList.remove('beat-flash'), 100);
+
+                // Flash the beat dot
+                const beatDot = document.getElementById('beatDot');
+                beatDot.classList.add('beat-active');
+                setTimeout(() => beatDot.classList.remove('beat-active'), 100);
             }
         }
 
@@ -561,6 +604,9 @@
         function updateDancerBPM(bpm, bpmChanged = false) {
             document.getElementById('bpmIndicator').textContent = `♪ ${bpm} BPM`;
             document.querySelector('.subtitle').textContent = `Procedural Skeletal Animation at ${bpm} BPM`;
+
+            // Update beat dot speed
+            updateBeatDotSpeed(bpm);
 
             // Calculate new cycle duration
             const newCycleDuration = (60 / bpm) * 8;
@@ -637,6 +683,9 @@
 
         window.addEventListener('load', () => {
             randomULID(); // Generate random ULID on load
+
+            // Initialize beat dot speed
+            updateBeatDotSpeed(currentBPM);
 
             // Add auto-update on ULID input change
             const ulidInput = document.getElementById('ulidInput');
