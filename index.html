@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #3d2817;
             color: #333;
             padding: 20px;
             min-height: 100vh;
@@ -65,8 +65,8 @@
 
         button {
             padding: 12px 30px;
-            background: #667eea;
-            color: white;
+            background: #ffe216;
+            color: #8b0000;
             border: none;
             border-radius: 8px;
             cursor: pointer;
@@ -76,9 +76,9 @@
         }
 
         button:hover {
-            background: #5568d3;
+            background: #ffd700;
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 5px 15px rgba(255, 226, 22, 0.4);
         }
 
         .main-view {
@@ -227,9 +227,7 @@
                     placeholder="Enter ULID (26 characters)"
                     maxlength="26"
                 >
-                <button onclick="generateDancer()">Generate</button>
-                <button onclick="randomULID()">Random</button>
-                <button onclick="generateGallery()">Gallery (10)</button>
+                <button onclick="generateGallery()">Gallery +10</button>
             </div>
             <div class="input-group">
                 <button id="micButton" onclick="toggleMicrophone()">🎤 Start Beat Detection</button>
@@ -638,6 +636,15 @@
 
         window.addEventListener('load', () => {
             randomULID(); // Generate random ULID on load
+
+            // Add auto-update on ULID input change
+            const ulidInput = document.getElementById('ulidInput');
+            ulidInput.addEventListener('input', () => {
+                const ulid = ulidInput.value.trim();
+                if (ulid.length === 26) {
+                    generateDancer(currentBPM);
+                }
+            });
         });
     </script>
 </body>
