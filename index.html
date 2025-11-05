@@ -1159,7 +1159,7 @@
             for (let i = 0; i < maxDancers; i++) {
                 // Calculate position using Fibonacci spiral (Fermat's spiral)
                 const angle = i * goldenAngle;
-                const radius = 15 * Math.sqrt(i); // Spiral expands with square root
+                const radius = 90 * Math.sqrt(i); // Spiral expands with square root across screen
 
                 const x = centerX + radius * Math.cos(angle);
                 const y = centerY + radius * Math.sin(angle);
