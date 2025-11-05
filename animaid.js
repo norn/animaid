@@ -55,6 +55,31 @@ class SkeletalAnimaID {
         };
     }
 
+    getDanceStyleName() {
+        const r = (offset) => this.seededRandom(this.seed * offset);
+        const styleRoll = r(7);
+
+        if (styleRoll < 0.11) {
+            return "Hip-hop/Break";
+        } else if (styleRoll < 0.22) {
+            return "Contemporary/Lyrical";
+        } else if (styleRoll < 0.33) {
+            return "Step/African";
+        } else if (styleRoll < 0.44) {
+            return "Latin (Salsa/Samba)";
+        } else if (styleRoll < 0.55) {
+            return "Ballet/Jazz";
+        } else if (styleRoll < 0.66) {
+            return "Robot";
+        } else if (styleRoll < 0.77) {
+            return "Swing";
+        } else if (styleRoll < 0.88) {
+            return "Disco";
+        } else {
+            return "Freestyle/Random";
+        }
+    }
+
     generateMovePreferences() {
         const r = (offset) => this.seededRandom(this.seed * offset);
 
@@ -558,6 +583,7 @@ class SkeletalAnimaID {
         const color = this.generateColor();
         const poses = this.generatePoseSequence();
         const physique = this.generatePhysique();
+        const danceStyle = this.getDanceStyleName();
 
         return {
             color: `hsl(${color.hue}, ${color.saturation}%, ${color.lightness}%)`,
@@ -565,7 +591,8 @@ class SkeletalAnimaID {
             preferences: prefs,
             physique: physique,
             poses: poses,
-            moves: poses.map((pose, i) => this.describePose(pose, i))
+            moves: poses.map((pose, i) => this.describePose(pose, i)),
+            danceStyle: danceStyle
         };
     }
 }
