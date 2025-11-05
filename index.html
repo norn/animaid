@@ -756,6 +756,13 @@
                 indicator.classList.add('beat-flash');
                 setTimeout(() => indicator.classList.remove('beat-flash'), 100);
 
+                // Also flash Fibonacci mode indicator if it exists
+                const fibonacciBpmIndicator = document.getElementById('fibonacciBpmIndicator');
+                if (fibonacciBpmIndicator) {
+                    fibonacciBpmIndicator.classList.add('beat-flash');
+                    setTimeout(() => fibonacciBpmIndicator.classList.remove('beat-flash'), 100);
+                }
+
                 const beatDot = document.getElementById('beatDot');
                 beatDot.classList.add('beat-active');
                 setTimeout(() => beatDot.classList.remove('beat-active'), 100);
@@ -1101,6 +1108,13 @@
                 indicator.classList.add('beat-flash');
                 setTimeout(() => indicator.classList.remove('beat-flash'), 100);
 
+                // Also flash Fibonacci mode indicator if it exists
+                const fibonacciBpmIndicator = document.getElementById('fibonacciBpmIndicator');
+                if (fibonacciBpmIndicator) {
+                    fibonacciBpmIndicator.classList.add('beat-flash');
+                    setTimeout(() => fibonacciBpmIndicator.classList.remove('beat-flash'), 100);
+                }
+
                 // Flash the beat dot when microphone detects beat
                 const beatDot = document.getElementById('beatDot');
                 beatDot.classList.add('beat-active');
@@ -1236,6 +1250,13 @@
                 indicator.classList.add('beat-flash');
                 setTimeout(() => indicator.classList.remove('beat-flash'), 100);
 
+                // Also flash Fibonacci mode indicator if it exists
+                const fibonacciBpmIndicator = document.getElementById('fibonacciBpmIndicator');
+                if (fibonacciBpmIndicator) {
+                    fibonacciBpmIndicator.classList.add('beat-flash');
+                    setTimeout(() => fibonacciBpmIndicator.classList.remove('beat-flash'), 100);
+                }
+
                 // Flash the beat dot when microphone detects beat
                 const beatDot = document.getElementById('beatDot');
                 beatDot.classList.add('beat-active');
@@ -1249,6 +1270,13 @@
             // Show "~" prefix when detecting (not stable yet)
             const prefix = isStable ? '♪' : '♪ ~';
             document.getElementById('bpmIndicator').textContent = `${prefix} ${bpm} BPM`;
+
+            // Update Fibonacci mode BPM indicator if it exists
+            const fibonacciBpmIndicator = document.getElementById('fibonacciBpmIndicator');
+            if (fibonacciBpmIndicator) {
+                fibonacciBpmIndicator.textContent = `${prefix} ${bpm} BPM`;
+            }
+
             document.querySelector('.subtitle').textContent = `Procedural Skeletal Animation at ${bpm} BPM`;
 
             // Update beat dot synchronization
@@ -1295,6 +1323,13 @@
                 const indicator = document.getElementById('bpmIndicator');
                 indicator.classList.add('bpm-change-flash');
                 setTimeout(() => indicator.classList.remove('bpm-change-flash'), 150);
+
+                // Also flash Fibonacci mode indicator if it exists
+                const fibonacciBpmIndicator = document.getElementById('fibonacciBpmIndicator');
+                if (fibonacciBpmIndicator) {
+                    fibonacciBpmIndicator.classList.add('bpm-change-flash');
+                    setTimeout(() => fibonacciBpmIndicator.classList.remove('bpm-change-flash'), 150);
+                }
             }
         }
 
@@ -1371,9 +1406,16 @@
                 <div>ESC - Exit mode</div>
             `;
 
+            // Add BPM indicator to Fibonacci mode
+            const bpmIndicator = document.createElement('div');
+            bpmIndicator.className = 'bpm-indicator';
+            bpmIndicator.id = 'fibonacciBpmIndicator';
+            bpmIndicator.textContent = `♪ ${currentBPM} BPM`;
+
             fibonacciContainer.appendChild(container);
             fibonacciContainer.appendChild(exitButton);
             fibonacciContainer.appendChild(controls);
+            fibonacciContainer.appendChild(bpmIndicator);
             document.body.appendChild(fibonacciContainer);
 
             // Generate Fibonacci spiral
@@ -1402,7 +1444,7 @@
 
             // Calculate radius multiplier to fill entire screen
             const screenDiagonal = Math.sqrt(width * width + height * height);
-            const radiusMultiplier = screenDiagonal / Math.sqrt(maxDancers) / 1.5; // Dynamic scaling
+            const radiusMultiplier = screenDiagonal / Math.sqrt(maxDancers) / 2.5; // Dynamic scaling - reduced from 1.5 to bring humanoids closer
 
             for (let i = 0; i < maxDancers; i++) {
                 // Calculate position using Fibonacci spiral (Fermat's spiral)
@@ -1417,6 +1459,10 @@
 
                 // Size variation: from small to large OR large to small
                 let sizeProgress = fibonacciSizeReversed ? (1 - progress) : progress;
+
+                // Apply exponential curve for more dramatic size changes
+                // Using power of 2.5 to create stronger size dynamics from center to edge
+                sizeProgress = Math.pow(sizeProgress, 2.5);
 
                 // Larger overall sizes: 60px to 350px (much bigger than before!)
                 const minSize = 60;
@@ -1436,7 +1482,7 @@
                 dancerDiv.className = 'fibonacci-dancer';
                 dancerDiv.style.left = `${x}px`;
                 dancerDiv.style.top = `${y}px`;
-                dancerDiv.style.transform = `translate(-50%, -50%) rotate(${angle * 180 / Math.PI}deg)`;
+                dancerDiv.style.transform = `translate(-50%, -50%)`; // Removed rotation to keep humanoids standing vertically
 
                 // Generate SVG without background box
                 dancerDiv.innerHTML = dancer.generateSVG(normalizedSize);
