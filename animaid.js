@@ -12,16 +12,25 @@ class SkeletalAnimaID {
         this.bpm = bpm;
         this.beatsPerCycle = 8;
         this.cycleDuration = (60 / this.bpm) * this.beatsPerCycle;
+        // Per-instance suffix keeps CSS class/keyframe names unique when the
+        // same ULID is rendered more than once on a page (styles inside SVG
+        // are document-global, so identical names would clash)
+        SkeletalAnimaID._instanceCount = (SkeletalAnimaID._instanceCount || 0) + 1;
+        this.instanceId = SkeletalAnimaID._instanceCount;
     }
 
     hashULID(ulid) {
-        let hash = 0;
+        // cyrb53: 53-bit hash, makes collisions between different ULIDs
+        // practically impossible (a 32-bit hash collides far too easily)
+        let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
         for (let i = 0; i < ulid.length; i++) {
-            const char = ulid.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+            const ch = ulid.charCodeAt(i);
+            h1 = Math.imul(h1 ^ ch, 2654435761);
+            h2 = Math.imul(h2 ^ ch, 1597334677);
         }
-        return Math.abs(hash);
+        h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+        h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+        return 4294967296 * (2097151 & h2) + (h1 >>> 0);
     }
 
     seededRandom(seed) {
@@ -213,13 +222,17 @@ class SkeletalAnimaID {
         const prefs = this.generateMovePreferences();
         const poses = [];
 
-        for (let i = 0; i < 15; i++) {
-            const t = i / 15;
+        // 16 unique poses = 2 per beat over the 8-beat cycle. Keyframe
+        // percentages are i / (poses.length - 1), so with the loop-closing
+        // copy appended the cycle splits into exactly 16 equal intervals
+        // and every pose change lands on a half-beat.
+        for (let i = 0; i < 16; i++) {
+            const t = i / 16;
             const seed = this.seed + i * 1000;
             poses.push(this.generatePose(t, energy, prefs, seed));
         }
 
-        // 16th pose = first pose for smooth looping
+        // 17th pose = first pose for smooth looping
         poses.push(poses[0]);
 
         this.generateHeadSequence(poses, energy, prefs);
@@ -232,7 +245,7 @@ class SkeletalAnimaID {
         const r = (i, offset) => this.seededRandom(headSeed + i * 500 + offset);
 
         for (let i = 0; i < poses.length - 1; i++) {
-            const t = i / 14;
+            const t = i / 16;
             const baseSwing = Math.sin(t * Math.PI * 4) * 8 * prefs.headMovement;
             const randomOffset = this.lerp(-3, 3, r(i, 0)) * energy * prefs.headMovement;
             poses[i].headTilt = baseSwing + randomOffset;
@@ -346,9 +359,11 @@ class SkeletalAnimaID {
             descriptions.push("balance");
         }
 
+        // Two poses per beat: even indexes land on the beat, odd on the "and"
+        const beatLabel = `Beat ${1 + Math.floor(index / 2)}${index % 2 ? '½' : ''}`;
         return descriptions.length > 0
-            ? `Beat ${index + 1}: ${descriptions.join(", ")}`
-            : `Beat ${index + 1}: base stance`;
+            ? `${beatLabel}: ${descriptions.join(", ")}`
+            : `${beatLabel}: base stance`;
     }
 
     generateAllAnimations(poses, id) {
@@ -434,7 +449,7 @@ class SkeletalAnimaID {
         const colorStr = `hsl(${color.hue}, ${color.saturation}%, ${color.lightness}%)`;
         const poses = this.generatePoseSequence();
         const physique = this.generatePhysique();
-        const id = `dancer-${this.ulid}`;
+        const id = `dancer-${this.ulid}-${this.instanceId}`;
 
         const heightScale = physique.height;
         const legScale = physique.legToBodyRatio;
@@ -591,7 +606,8 @@ class SkeletalAnimaID {
             preferences: prefs,
             physique: physique,
             poses: poses,
-            moves: poses.map((pose, i) => this.describePose(pose, i)),
+            // Skip the loop-closing copy of the first pose
+            moves: poses.slice(0, -1).map((pose, i) => this.describePose(pose, i)),
             danceStyle: danceStyle
         };
     }
