@@ -13,7 +13,7 @@ AnimaID generates unique, dancing skeletal avatars based on ULID (Universally Un
 - **Real-time Beat Detection**: Syncs to live music from your microphone
 - **Diverse Dance Styles**: Energetic, smooth, rhythmic, latin, symmetric, freestyle, robot, swing, and disco
 - **Realistic Physics**: Natural body balance, arm-leg coordination, and anatomical constraints
-- **Lightweight**: ~25KB JavaScript, pure vanilla with no dependencies
+- **Lightweight**: ~29KB JavaScript core (~5KB gzipped), pure vanilla with no dependencies
 
 ## Quick Start
 
@@ -71,8 +71,9 @@ new SkeletalAnimaID(ulid, bpm = 120)
     energy: 0.75,              // 0.3-1.0
     physique: {...},           // height, build, legToBodyRatio
     preferences: {...},        // 9 movement parameters (0-1)
-    poses: [...],              // 16 keyframe poses
-    moves: [...]               // Move descriptions
+    poses: [...],              // 17 keyframe poses (16 unique + loop-closing copy of the first)
+    moves: [...],              // 16 move descriptions
+    danceStyle: "Disco"        // One of the 9 style names
 }
 ```
 
@@ -104,8 +105,8 @@ The generator supports 9 distinct dance styles:
 
 The live demo includes real-time microphone beat detection with multiple algorithm options:
 
-1. Click "🎤 Start Beat Detection"
-2. Select your preferred BPM detection algorithm
+1. Select your preferred BPM detection algorithm (switching while listening restarts detection)
+2. Click "🎤 Start Beat Detection"
 3. Play music or make rhythmic sounds
 4. All dancers sync automatically to detected BPM (60-200)
 
@@ -137,7 +138,7 @@ npm run build
 
 ## Performance
 
-- **File Size**: 25KB uncompressed, ~8KB gzipped
+- **File Size**: ~29KB uncompressed, ~5KB gzipped
 - **Animation**: Pure CSS keyframes, 60fps, GPU-accelerated
 - **Memory**: <1MB per dancer instance
 - **Load Time**: Instantaneous generation (<10ms per dancer)
@@ -164,7 +165,7 @@ const fast = new SkeletalAnimaID('01HQZM3K7X9YF2NW8TBVKJD6PQ', 160);
 - **ULID Format**: 26-character Base32 string (e.g., `01HQZM3K7X9YF2NW8TBVKJD6PQ`)
 - **Seeded RNG**: Deterministic pseudo-random generation ensures reproducibility
 - **Animation**: CSS keyframes, 60fps, GPU-accelerated
-- **File Size**: ~25KB uncompressed, ~8KB gzipped
+- **File Size**: ~29KB uncompressed, ~5KB gzipped
 
 ## License
 

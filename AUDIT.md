@@ -3,7 +3,16 @@
 Follow-up audit after the fixes in 95d5b6e and the realtime-bpm-analyzer v5 migration in ae105bc.
 31 confirmed findings; verification: multi-agent review with adversarial cross-checking, plus direct execution checks (Node.js, math grids, generated CSS). One candidate was refuted (`audioContext.resume()` is not needed — the context is created inside a click handler).
 
-Severity is calibrated to realistic user impact. Findings are **not yet fixed** — this document is the deliverable.
+Severity is calibrated to realistic user impact.
+
+**Status: all findings below are fixed** in the commit that updated this line, with one exception:
+item 19 (phase jump when a tempo change rewrites animation durations) is an accepted limitation —
+CSS re-maps elapsed time into the new duration by spec, and preserving phase would require
+per-element animation bookkeeping that isn't worth the complexity here.
+Verified by headless-Chromium end-to-end run: synthetic 100 BPM energy stream through the full
+simple pipeline confirms exactly 100 BPM; no beats in near-silence (noise floor); stale results
+after Stop are ignored; invalid ULIDs rejected and lowercase ULIDs normalized; gallery and
+Fibonacci modes render cleanly. Mirror/shadow/bodyTilt fixes unit-verified in Node.
 
 ## High — break BPM detection in real-world use
 

@@ -288,8 +288,11 @@ class SkeletalAnimaID {
             leftHipAngle = prefs.symmetry > 0.6
                 ? -rightHipAngle
                 : this.lerp(-60, 60, r(9)) * energy * prefs.legMovement;
+            // Mirrored hip needs a mirrored (negated) knee rotation too:
+            // both legs share identical straight-down geometry, so the visual
+            // mirror of (hip + knee) is (-hip - knee)
             leftKneeAngle = prefs.symmetry > 0.6
-                ? (rightHipAngle > 0
+                ? -(rightHipAngle > 0
                     ? this.lerp(50, 110, r(8)) * prefs.legMovement
                     : this.lerp(15, 60, r(8)) * prefs.legMovement)
                 : this.lerp(15, 110, r(10)) * prefs.legMovement;
@@ -314,8 +317,10 @@ class SkeletalAnimaID {
                     this.lerp(-80, 80, r(3)) * energy * prefs.armMovement)
                 : -45 + leftArmCompensation - shoulderBounce * 0.5 +
                     this.lerp(-80, 80, r(5)) * energy * prefs.armMovement,
+            // The symmetric branch mirrors the shoulder by negation, so the
+            // elbow must be negated as well or the forearm breaks the mirror
             leftElbowAngle: prefs.symmetry > 0.7
-                ? this.lerp(-30, 150, r(4)) * (0.3 + 0.7 * prefs.armMovement)
+                ? -(this.lerp(-30, 150, r(4)) * (0.3 + 0.7 * prefs.armMovement))
                 : this.lerp(-30, 150, r(6)) * (0.3 + 0.7 * prefs.armMovement),
             rightHipAngle: rightHipAngle,
             rightKneeAngle: rightKneeAngle,
@@ -369,14 +374,18 @@ class SkeletalAnimaID {
     generateAllAnimations(poses, id) {
         let css = '';
 
+        // bodyTilt (balance lean) and bodyRotate are both 2D rotations of the
+        // torso container, so they combine additively into a single rotate()
+        const bodyAngle = pose => pose.bodyRotate + pose.bodyTilt;
+
         css += `@keyframes ${id}-body {\n`;
-        css += `    0% { transform: translateY(${poses[0].verticalOffset}px) rotate(${poses[0].bodyRotate}deg); }\n`;
+        css += `    0% { transform: translateY(${poses[0].verticalOffset}px) rotate(${bodyAngle(poses[0])}deg); }\n`;
         for (let i = 1; i < poses.length - 1; i++) {
             const percent = (i / (poses.length - 1)) * 100;
             const pose = poses[i];
-            css += `    ${percent.toFixed(2)}% { transform: translateY(${pose.verticalOffset}px) rotate(${pose.bodyRotate}deg); }\n`;
+            css += `    ${percent.toFixed(2)}% { transform: translateY(${pose.verticalOffset}px) rotate(${bodyAngle(pose)}deg); }\n`;
         }
-        css += `    100% { transform: translateY(${poses[0].verticalOffset}px) rotate(${poses[0].bodyRotate}deg); }\n`;
+        css += `    100% { transform: translateY(${poses[0].verticalOffset}px) rotate(${bodyAngle(poses[0])}deg); }\n`;
         css += `}\n\n`;
 
         css += `@keyframes ${id}-head {\n`;
@@ -506,6 +515,10 @@ class SkeletalAnimaID {
                         }
                         .${id}-shadow {
                             animation: ${id}-shadow ${this.cycleDuration}s ease-in-out infinite;
+                            /* fill-box: without it "center" resolves against the
+                               viewBox (100,150), ~77px above the ellipse, and the
+                               scale keyframes visibly displace the shadow upward */
+                            transform-box: fill-box;
                             transform-origin: center center;
                         }
                         ${animations}
