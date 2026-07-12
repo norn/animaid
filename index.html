@@ -360,26 +360,39 @@
     <script src="animaid.js"></script>
     <script src="bpm-detectors-bundle.js"></script>
     <script>
-        let lastGeneratedBPM = 120;
         let beatInterval = null;
 
-        // Start precise beat synchronization
+        // ULIDs are Crockford base32; anything else would end up inside CSS
+        // identifiers and innerHTML (broken animations / markup injection)
+        const ULID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+        function normalizeULID(raw) {
+            const ulid = raw.trim().toUpperCase();
+            return ULID_PATTERN.test(ulid) ? ulid : null;
+        }
+
+        // Start precise beat synchronization. A self-correcting timeout chain
+        // instead of setInterval: intervals accumulate drift against the CSS
+        // animation clock, the chain re-anchors to performance.now() each beat.
         function startBeatSync(bpm) {
             stopBeatSync();
             const beatDuration = (60 / bpm) * 1000; // Convert to milliseconds
             const beatDot = document.getElementById('beatDot');
+            let nextBeat = performance.now() + beatDuration;
 
-            beatInterval = setInterval(() => {
+            const tick = () => {
                 beatDot.classList.add('beat-active');
                 setTimeout(() => {
                     beatDot.classList.remove('beat-active');
                 }, 100); // Show for 100ms
-            }, beatDuration);
+                nextBeat += beatDuration;
+                beatInterval = setTimeout(tick, Math.max(0, nextBeat - performance.now()));
+            };
+            beatInterval = setTimeout(tick, beatDuration);
         }
 
         function stopBeatSync() {
             if (beatInterval) {
-                clearInterval(beatInterval);
+                clearTimeout(beatInterval);
                 beatInterval = null;
             }
             const beatDot = document.getElementById('beatDot');
@@ -387,13 +400,12 @@
         }
 
         function generateDancer(bpm = currentBPM) {
-            const ulid = document.getElementById('ulidInput').value.trim();
-            if (ulid.length !== 26) {
-                alert('ULID must be exactly 26 characters!');
+            const ulid = normalizeULID(document.getElementById('ulidInput').value);
+            if (!ulid) {
+                alert('ULID must be 26 characters of Crockford base32 (0-9 and A-Z except I, L, O, U)');
                 return;
             }
 
-            lastGeneratedBPM = bpm;
             lastMainULID = ulid;
             const dancer = new SkeletalAnimaID(ulid, bpm);
             const info = dancer.getDanceInfo();
@@ -474,8 +486,6 @@
             generateDancer(currentBPM);
         }
 
-        let galleryULIDs = [];
-
         function generateGallery() {
             const gallery = document.getElementById('gallery');
 
@@ -493,8 +503,6 @@
                 for (let j = 0; j < 26; j++) {
                     ulid += chars[Math.floor(Math.random() * chars.length)];
                 }
-
-                galleryULIDs.push(ulid);
 
                 const dancer = new SkeletalAnimaID(ulid, currentBPM);
                 const item = document.createElement('div');
@@ -532,6 +540,9 @@
         const ENERGY_BUFFER_SIZE = 150; // ~3.5 seconds for autocorrelation
         const BPM_HISTORY_SIZE = 8; // Require stability over 8 beats
         const BPM_TOLERANCE = 3; // BPM must differ by at least this much to trigger update
+        const MIN_BEAT_RMS = 0.01; // Absolute noise floor (~-40dBFS): the adaptive
+                                   // threshold is relative, so without this floor
+                                   // room noise in silence registers as beats
 
         // Algorithm selection
         let currentAlgorithm = 'simple';
@@ -541,7 +552,10 @@
         let audioChunksForAnalysis = [];
         let audioChunksSampleCount = 0;
 
+        let isStarting = false; // Guards against concurrent startMicrophone calls
+
         async function toggleMicrophone() {
+            if (isStarting) return;
             if (isListening) {
                 stopMicrophone();
             } else {
@@ -550,12 +564,25 @@
         }
 
         async function startMicrophone() {
+            if (isStarting || isListening) return;
+            isStarting = true;
+            let stream = null;
             try {
                 // Get current algorithm selection
                 currentAlgorithm = document.getElementById('algorithmSelect').value;
                 console.log('[BPM] Starting microphone with algorithm:', currentAlgorithm);
 
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Browser default audio processing (echo cancellation, noise
+                // suppression, AGC) treats music played through speakers as
+                // noise/echo and attenuates exactly the signal the detectors
+                // need — disable all of it
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
 
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 microphone = audioContext.createMediaStreamSource(stream);
@@ -599,13 +626,41 @@
                 document.getElementById('micStatus').textContent = `Listening (${getAlgorithmName()})...`;
                 document.getElementById('micStatus').style.color = '#667eea';
 
-                // Stop automatic beat sync when using microphone
-                stopBeatSync();
+                // Simple mode flashes the dot on real detected beats; the
+                // other algorithms report only tempo, so keep the dot pulsing
+                // at the confirmed BPM instead of leaving it dead
+                if (currentAlgorithm === 'simple') {
+                    stopBeatSync();
+                } else {
+                    startBeatSync(confirmedBPM);
+                }
 
             } catch (err) {
-                console.error('Microphone access error:', err);
-                document.getElementById('micStatus').textContent = 'Microphone access denied';
+                console.error('Microphone setup error:', err);
+
+                // Release everything acquired before the failure — otherwise
+                // the mic stream stays live (recording indicator on) with no
+                // way to stop it from the UI
+                if (workletNode) { workletNode.disconnect(); workletNode.port.onmessage = null; }
+                if (realtimeBpmProcessor) { realtimeBpmProcessor.disconnect(); }
+                if (lowpassFilter) lowpassFilter.disconnect();
+                if (microphone) microphone.disconnect();
+                if (stream) stream.getTracks().forEach(track => track.stop());
+                if (audioContext) audioContext.close();
+                audioContext = null;
+                microphone = null;
+                lowpassFilter = null;
+                workletNode = null;
+                realtimeBpmProcessor = null;
+
+                const denied = err && (err.name === 'NotAllowedError' ||
+                    err.name === 'PermissionDeniedError' || err.name === 'NotFoundError');
+                document.getElementById('micStatus').textContent = denied
+                    ? 'Microphone access denied'
+                    : 'Beat detection setup failed';
                 document.getElementById('micStatus').style.color = '#d32f2f';
+            } finally {
+                isStarting = false;
             }
         }
 
@@ -637,20 +692,23 @@
                 microphone.connect(lowpassFilter);
                 lowpassFilter.connect(realtimeBpmProcessor.node);
 
-                // Listen for BPM updates (v5 emits typed events instead of port messages)
-                const onBpmCandidates = (data, stable) => {
+                // Listen for BPM updates (v5 emits typed events instead of
+                // port messages). Only 'bpm' feeds the measurement history:
+                // 'bpmStable' repeats the same analysis pass, so feeding both
+                // would double-count that reading in bpmHistory.
+                realtimeBpmProcessor.on('bpm', data => {
                     if (data.bpm && data.bpm.length > 0) {
                         const detectedBPM = data.bpm[0].tempo;
-                        if (stable) {
-                            console.log('[BPM] Realtime STABLE:', detectedBPM, 'count:', data.bpm[0].count);
-                        }
                         if (detectedBPM >= 60 && detectedBPM <= 200) {
                             handleBPMDetection(detectedBPM);
                         }
                     }
-                };
-                realtimeBpmProcessor.on('bpm', data => onBpmCandidates(data, false));
-                realtimeBpmProcessor.on('bpmStable', data => onBpmCandidates(data, true));
+                });
+                realtimeBpmProcessor.on('bpmStable', data => {
+                    if (data.bpm && data.bpm.length > 0) {
+                        console.log('[BPM] Realtime STABLE:', data.bpm[0].tempo, 'count:', data.bpm[0].count);
+                    }
+                });
                 realtimeBpmProcessor.on('analyzerReset', () => {
                     console.log('[BPM] Realtime analyzer was reset (continuous mode)');
                 });
@@ -659,6 +717,8 @@
                 document.getElementById('micStatus').textContent = 'Realtime BPM setup failed, using Simple';
                 document.getElementById('micStatus').style.color = '#d32f2f';
                 currentAlgorithm = 'simple';
+                // Keep the visible selection in sync with the actual algorithm
+                document.getElementById('algorithmSelect').value = 'simple';
 
                 // Fallback to simple algorithm using AudioWorklet
                 await audioContext.audioWorklet.addModule('audio-processor-worklet.js');
@@ -722,6 +782,9 @@
         // Only maintains the measurement history and confirms stable values —
         // beat flashes are triggered by actual beat events, not BPM messages.
         function handleBPMDetection(detectedBPM) {
+            // In-flight async analyses (and queued realtime events) may still
+            // resolve after Stop — don't let them repollute the reset state
+            if (!isListening) return;
             if (!detectedBPM || detectedBPM < 60 || detectedBPM > 200) return;
 
             // Buffer-analysis algorithms already aggregate a 10-second window per
@@ -750,7 +813,11 @@
                     confirmedBPM = avgBPM;
                     currentBPM = avgBPM;
                     updateDancerBPM(confirmedBPM, true, true); // Mark as stable
-                } else if (!isStable) {
+                } else if (isStable) {
+                    // Stable but within tolerance of the confirmed value:
+                    // nothing to retune, but clear a lingering "~" indicator
+                    setBpmIndicatorText(confirmedBPM, true);
+                } else {
                     // Show detected BPM even when not stable, so user gets live feedback
                     updateDancerBPM(avgBPM, false, false); // Mark as detecting
                 }
@@ -797,6 +864,22 @@
                     channelData.set(chunk, offset);
                     offset += chunk.length;
                 }
+
+                // Normalize to full scale: web-audio-beat-detector only
+                // searches for peaks when the max amplitude exceeds 0.25,
+                // which raw (lowpass-filtered) mic levels often never reach
+                let peak = 0;
+                for (let i = 0; i < channelData.length; i++) {
+                    const a = Math.abs(channelData[i]);
+                    if (a > peak) peak = a;
+                }
+                if (peak > 0.001) { // Don't amplify pure silence
+                    const gain = 1 / peak;
+                    for (let i = 0; i < channelData.length; i++) {
+                        channelData[i] *= gain;
+                    }
+                }
+
                 const buffer = audioContext.createBuffer(1, channelData.length, audioContext.sampleRate);
                 buffer.copyToChannel(channelData, 0);
 
@@ -850,7 +933,9 @@
             let bestCorrelation = 0;
             let bestLag = 0;
 
-            for (let lag = minLag; lag < Math.min(maxLag, centered.length / 2); lag++) {
+            // Inclusive upper bound: with an exclusive bound the maxLag lag
+            // itself (i.e. minBPM, 60) was unreachable
+            for (let lag = minLag; lag <= Math.min(maxLag, Math.floor(centered.length / 2)); lag++) {
                 let correlation = 0;
                 for (let i = 0; i < centered.length - lag; i++) {
                     correlation += centered[i] * centered[i + lag];
@@ -949,8 +1034,8 @@
             const now = Date.now();
             const timeSinceLastBeat = now - lastBeatTime;
 
-            // Detect beat with adaptive threshold
-            if (energy > threshold && timeSinceLastBeat > 200) {
+            // Detect beat with adaptive threshold (and an absolute noise floor)
+            if (energy > threshold && energy > MIN_BEAT_RMS && timeSinceLastBeat > 200) {
                 lastBeatTime = now;
                 beatTimes.push(now);
 
@@ -983,22 +1068,27 @@
                 if (energyBuffer.length >= 100) {
                     const energySampleRate = audioContext.sampleRate / 1024;
                     const result = autocorrelate(energyBuffer, energySampleRate);
-                    if (result.confidence > 0.3 && result.bpm > 0) { // Only use if confident
+                    // Only use if confident and in range (the floored minLag
+                    // can map slightly above 200 BPM)
+                    if (result.confidence > 0.3 && result.bpm >= 60 && result.bpm <= 200) {
                         autocorrelationBPM = result.bpm;
                     }
                 }
 
-                // Combine methods: prefer interval clustering but validate with autocorrelation
-                if (detectedBPM && autocorrelationBPM) {
-                    if (Math.abs(detectedBPM - autocorrelationBPM) / detectedBPM < 0.1) {
-                        // Both methods agree (within 10%) — use average
-                        detectedBPM = Math.round((detectedBPM + autocorrelationBPM) / 2);
-                    }
-                    // Harmonic relationship (autocorrelation locked onto half or
-                    // double tempo) still confirms the beat grid — keep the
-                    // clustered value, it comes from directly measured intervals
+                // Interval clustering can legitimately land outside 60-200
+                // (kick+snare hits halve the interval; missed beats double
+                // it) — fold by octaves instead of throwing the whole
+                // measurement away at the final range gate
+                if (detectedBPM) {
+                    while (detectedBPM > 200) detectedBPM = Math.round(detectedBPM / 2);
+                    while (detectedBPM < 60) detectedBPM = Math.round(detectedBPM * 2);
                 }
-                else if (autocorrelationBPM && !detectedBPM) {
+
+                // The clustered value comes from directly measured intervals;
+                // the autocorrelation grid is coarsely quantized (~43Hz energy
+                // rate: 120 BPM is not even representable), so it is used only
+                // as a fallback, never averaged in
+                if (!detectedBPM && autocorrelationBPM) {
                     detectedBPM = autocorrelationBPM;
                 }
 
@@ -1029,18 +1119,24 @@
 
         let lastMainULID = null; // Track current ULID to know when to recreate
 
-        function updateDancerBPM(bpm, bpmChanged = false, isStable = true) {
-            // Show "~" prefix when detecting (not stable yet)
+        // Update the BPM indicators and subtitle. Unstable (still detecting)
+        // values are marked with "~" everywhere they appear.
+        function setBpmIndicatorText(bpm, isStable) {
             const prefix = isStable ? '♪' : '♪ ~';
             document.getElementById('bpmIndicator').textContent = `${prefix} ${bpm} BPM`;
 
-            // Update Fibonacci mode BPM indicator if it exists
             const fibonacciBpmIndicator = document.getElementById('fibonacciBpmIndicator');
             if (fibonacciBpmIndicator) {
                 fibonacciBpmIndicator.textContent = `${prefix} ${bpm} BPM`;
             }
 
-            document.querySelector('.subtitle').textContent = `Procedural Skeletal Animation at ${bpm} BPM`;
+            document.querySelector('.subtitle').textContent =
+                `Procedural Skeletal Animation at ${isStable ? '' : '~'}${bpm} BPM`;
+        }
+
+        function updateDancerBPM(bpm, bpmChanged = false, isStable = true) {
+            setBpmIndicatorText(bpm, isStable);
+            const fibonacciBpmIndicator = document.getElementById('fibonacciBpmIndicator');
 
             // While the value is still fluctuating, only show live feedback —
             // touching animation durations or the beat-sync interval on every
@@ -1057,10 +1153,8 @@
             const newCycleDuration = (60 / bpm) * 8;
 
             // Update main dancer
-            const ulid = document.getElementById('ulidInput').value.trim();
-            if (ulid.length === 26) {
-                lastGeneratedBPM = bpm;
-
+            const ulid = normalizeULID(document.getElementById('ulidInput').value);
+            if (ulid) {
                 // Check if ULID changed - only recreate if necessary
                 if (ulid !== lastMainULID) {
                     // ULID changed - need to regenerate completely
@@ -1261,9 +1355,17 @@
             // Add auto-update on ULID input change
             const ulidInput = document.getElementById('ulidInput');
             ulidInput.addEventListener('input', () => {
-                const ulid = ulidInput.value.trim();
-                if (ulid.length === 26) {
+                if (normalizeULID(ulidInput.value)) {
                     generateDancer(currentBPM);
+                }
+            });
+
+            // Changing the algorithm while listening restarts detection with
+            // the new algorithm (it used to be silently ignored until Stop)
+            document.getElementById('algorithmSelect').addEventListener('change', async () => {
+                if (isListening) {
+                    stopMicrophone();
+                    await startMicrophone();
                 }
             });
 

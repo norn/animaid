@@ -1,7 +1,7 @@
 {
   "name": "animaid",
-  "version": "1.0.0",
-  "description": "**Procedural Skeletal Animation Generator from ULID**",
+  "version": "2.0.0",
+  "description": "Procedural Skeletal Animation Generator from ULID",
   "main": "animaid.js",
   "scripts": {
     "build": "esbuild bpm-detectors.js --bundle --outfile=bpm-detectors-bundle.js --format=iife",
@@ -9,11 +9,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "http://local_proxy@127.0.0.1:49687/git/norn/animaid"
+    "url": "git+https://github.com/norn/animaid.git"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "realtime-bpm-analyzer": "^5.0.15",
     "web-audio-beat-detector": "^8.2.37"
