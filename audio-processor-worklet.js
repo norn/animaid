@@ -32,13 +32,8 @@ class BPMAudioProcessor extends AudioWorkletProcessor {
                 }
             }
 
-            // Copy input to output (passthrough)
-            const output = outputs[0];
-            if (output && output.length > 0) {
-                for (let channel = 0; channel < output.length; channel++) {
-                    output[channel].set(input[Math.min(channel, input.length - 1)]);
-                }
-            }
+            // Output is intentionally left silent: the microphone signal is
+            // only analyzed, never played back (no acoustic feedback loop).
         }
 
         // Return true to keep processor alive

@@ -111,12 +111,12 @@ The live demo includes real-time microphone beat detection with multiple algorit
 
 ### Available BPM Algorithms
 
-- **Simple (Current)**: Custom implementation using autocorrelation and interval clustering. Fast and efficient for most music.
-- **Realtime BPM Analyzer**: Uses [realtime-bpm-analyzer](https://github.com/dlepaux/realtime-bpm-analyzer) for continuous real-time analysis with stabilization.
-- **Web Audio Beat Detector**: Implements [web-audio-beat-detector](https://github.com/chrisguttandin/web-audio-beat-detector) for accurate tempo detection.
-- **Music Beat Detector**: Leverages [music-beat-detector](https://github.com/chrvadala/music-beat-detector) for comprehensive beat analysis.
+- **Simple (Current)**: Custom implementation using autocorrelation and interval clustering. Fast and efficient for most music. Detects 60-200 BPM.
+- **Realtime BPM Analyzer**: Uses [realtime-bpm-analyzer](https://github.com/dlepaux/realtime-bpm-analyzer) for continuous real-time analysis with stabilization. Note: this library folds every tempo into the 90-180 BPM range (slower/faster tracks are reported at double/half tempo).
+- **Web Audio Beat Detector (analyze)**: Uses [web-audio-beat-detector](https://github.com/chrisguttandin/web-audio-beat-detector)'s `analyze()` for precise tempo detection over a rolling 10-second window (60-200 BPM).
+- **Web Audio Beat Detector (guess)**: Same library's `guess()` variant, which returns a rounded BPM and beat offset (60-200 BPM).
 
-Features visual feedback (flashing indicator), median filtering for stability, and works best with clear rhythmic music with prominent bass.
+Features visual feedback (flashing indicator), stability filtering, and works best with clear rhythmic music with prominent bass. Microphone audio is analyzed only — it is never played back through the speakers.
 
 ### Building the BPM Detectors
 

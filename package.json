@@ -15,7 +15,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "music-beat-detector": "^0.1.1",
     "realtime-bpm-analyzer": "^4.0.2",
     "web-audio-beat-detector": "^8.2.31"
   },
