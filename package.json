@@ -15,12 +15,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "realtime-bpm-analyzer": "^4.0.2",
-    "web-audio-beat-detector": "^8.2.31"
+    "realtime-bpm-analyzer": "^5.0.15",
+    "web-audio-beat-detector": "^8.2.37"
   },
   "devDependencies": {
     "buffer": "^6.0.3",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.1",
     "events": "^3.3.0"
   }
 }
