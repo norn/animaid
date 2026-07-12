@@ -6,7 +6,11 @@
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __commonJS = (cb, mod) => function __require() {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    try {
+      return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    } catch (e) {
+      throw mod = 0, e;
+    }
   };
   var __export = (target, all) => {
     for (var name in all)
@@ -335,7 +339,7 @@
           if (0 < valueAtStartTime && 0 < value || valueAtStartTime < 0 && value < 0) {
             return valueAtStartTime * Math.pow(value / valueAtStartTime, (time - startTime) / (endTime - startTime));
           }
-          return 0;
+          return time < endTime ? valueAtStartTime : value;
         };
         var getLinearRampValueAtTime = function getLinearRampValueAtTime2(time, startTime, valueAtStartTime, _ref) {
           var endTime = _ref.endTime, value = _ref.value;
@@ -343,16 +347,27 @@
         };
         var interpolateValue = function interpolateValue2(values, theoreticIndex) {
           var lowerIndex = Math.floor(theoreticIndex);
-          var upperIndex = Math.ceil(theoreticIndex);
-          if (lowerIndex === upperIndex) {
+          if (lowerIndex === theoreticIndex) {
             return values[lowerIndex];
           }
+          var upperIndex = Math.ceil(theoreticIndex);
           return (1 - (theoreticIndex - lowerIndex)) * values[lowerIndex] + (1 - (upperIndex - theoreticIndex)) * values[upperIndex];
         };
         var getValueCurveValueAtTime = function getValueCurveValueAtTime2(time, _ref) {
           var duration = _ref.duration, startTime = _ref.startTime, values = _ref.values;
           var theoreticIndex = (time - startTime) / duration * (values.length - 1);
           return interpolateValue(values, theoreticIndex);
+        };
+        var truncateValueCurve = function truncateValueCurve2(values, originalDuration, targetDuration) {
+          var length = values.length;
+          var truncatedLength = Math.max(1, Math.floor(targetDuration / originalDuration * length)) + 1;
+          var truncatedValues = values instanceof Float32Array ? new Float32Array(truncatedLength) : values.slice(0, truncatedLength);
+          for (var i = 0; i < truncatedLength; i += 1) {
+            var time = i / (truncatedLength - 1) * targetDuration;
+            var theoreticIndex = time / originalDuration * (length - 1);
+            truncatedValues[i] = interpolateValue(values, theoreticIndex);
+          }
+          return truncatedValues;
         };
         var isSetTargetAutomationEvent = function isSetTargetAutomationEvent2(automationEvent) {
           return automationEvent.type === "setTarget";
@@ -401,17 +416,7 @@
                   }
                   if (lastAutomationEvent !== void 0 && isSetValueCurveAutomationEvent(lastAutomationEvent) && lastAutomationEvent.startTime + lastAutomationEvent.duration > eventTime) {
                     var duration = eventTime - lastAutomationEvent.startTime;
-                    var ratio = (lastAutomationEvent.values.length - 1) / lastAutomationEvent.duration;
-                    var length = Math.max(2, 1 + Math.ceil(duration * ratio));
-                    var fraction = duration / (length - 1) * ratio;
-                    var values = lastAutomationEvent.values.slice(0, length);
-                    if (fraction < 1) {
-                      for (var i = 1; i < length; i += 1) {
-                        var factor = fraction * i % 1;
-                        values[i] = lastAutomationEvent.values[i - 1] * (1 - factor) + lastAutomationEvent.values[i] * factor;
-                      }
-                    }
-                    this._automationEvents[this._automationEvents.length - 1] = createSetValueCurveAutomationEvent2(values, lastAutomationEvent.startTime, duration);
+                    this._automationEvents[this._automationEvents.length - 1] = createSetValueCurveAutomationEvent2(truncateValueCurve(lastAutomationEvent.values, lastAutomationEvent.duration, duration), lastAutomationEvent.startTime, duration);
                   }
                 }
               } else {
@@ -535,17 +540,710 @@
   });
 
   // node_modules/realtime-bpm-analyzer/dist/index.esm.js
-  var T = "realtime-bpm-processor";
-  var g = `"use strict";(()=>{var x="realtime-bpm-processor";async function p(r,o=.2,e=.95,s=.05){let t=e;do if(t-=s,await r(t))break;while(t>o)}function y(r=.2,o=.95,e=.05){let s={},t=o;do t-=e,s[t.toString()]=[];while(t>r);return s}function v(r=.2,o=.95,e=.05){let s={},t=o;do t-=e,s[t.toString()]=0;while(t>r);return s}function m(){let o=0,e=new Float32Array(0);function s(){o=0,e=new Float32Array(0)}function t(){return o===4096}function i(){s()}return function(n){t()&&i();let a=new Float32Array(e.length+n.length);return a.set(e,0),a.set(n,e.length),e=a,o+=n.length,{isBufferFull:t(),buffer:e,bufferSize:4096}}}function B(r,o){return Math.round(r*o)}function b({audioSampleRate:r,data:o,threshold:e,offset:s=0}){let t=[],i=B(.25,r),{length:n}=o;for(let a=s;a<n;a+=1)o[a]>e&&(t.push(a),a+=i);return{peaks:t,threshold:e}}async function I({audioSampleRate:r,data:o}){let e=15,s=!1,t=.2;if(await p(async i=>s?!0:(o[i].length>e&&(s=!0,t=i),!1)),s&&t){let i=O(o[t]),n=S({audioSampleRate:r,intervalCounts:i});return{bpm:C(n),threshold:t}}return{bpm:[],threshold:t}}function C(r,o=5){return r.sort((e,s)=>s.count-e.count).splice(0,o)}function O(r){let o=[];for(let e=0;e<r.length;e++)for(let s=0;s<10;s++){let t=r[e],i=e+s,n=r[i]-t;if(!o.some(l=>l.interval===n?(l.count+=1,l.count):!1)){let l={interval:n,count:1};o.push(l)}}return o}function S({audioSampleRate:r,intervalCounts:o}){let e=[];for(let s of o){if(s.interval===0)continue;s.interval=Math.abs(s.interval);let t=60/(s.interval/r);for(;t<90;)t*=2;for(;t>180;)t/=2;if(t=Math.round(t),!e.some(n=>n.tempo===t?(n.count+=s.count,n.count):!1)){let n={tempo:t,count:s.count,confidence:0};e.push(n)}}return e}var d={minValidThreshold:()=>.2,validPeaks:()=>y(),nextIndexPeaks:()=>v(),skipIndexes:()=>1,effectiveBufferTime:()=>0},f=class{constructor(o={}){this.options={continuousAnalysis:!1,stabilizationTime:2e4,muteTimeInIndexes:1e4,debug:!1};this.minValidThreshold=d.minValidThreshold();this.validPeaks=d.validPeaks();this.nextIndexPeaks=d.nextIndexPeaks();this.skipIndexes=d.skipIndexes();this.effectiveBufferTime=d.effectiveBufferTime();this.computedStabilizationTimeInSeconds=0;Object.assign(this.options,o),this.updateComputedValues()}updateComputedValues(){this.computedStabilizationTimeInSeconds=this.options.stabilizationTime/1e3}reset(){this.minValidThreshold=d.minValidThreshold(),this.validPeaks=d.validPeaks(),this.nextIndexPeaks=d.nextIndexPeaks(),this.skipIndexes=d.skipIndexes(),this.effectiveBufferTime=d.effectiveBufferTime()}async clearValidPeaks(o){this.minValidThreshold=Number.parseFloat(o.toFixed(2)),await p(async e=>(e<o&&this.validPeaks[e]!==void 0&&(delete this.validPeaks[e],delete this.nextIndexPeaks[e]),!1))}async analyzeChunck({audioSampleRate:o,channelData:e,bufferSize:s,postMessage:t}){this.options.debug&&t({message:"ANALYZE_CHUNK",data:e}),this.effectiveBufferTime+=s;let i=s*this.skipIndexes,n=i-s;await this.findPeaks({audioSampleRate:o,channelData:e,bufferSize:s,currentMinIndex:n,currentMaxIndex:i,postMessage:t}),this.skipIndexes++;let a=await I({audioSampleRate:o,data:this.validPeaks}),{threshold:l}=a;t({message:"BPM",data:a}),this.minValidThreshold<l&&(t({message:"BPM_STABLE",data:a}),await this.clearValidPeaks(l)),this.options.continuousAnalysis&&this.effectiveBufferTime/o>this.computedStabilizationTimeInSeconds&&(this.reset(),t({message:"ANALYZER_RESETED"}))}async findPeaks({audioSampleRate:o,channelData:e,bufferSize:s,currentMinIndex:t,currentMaxIndex:i,postMessage:n}){await p(async a=>{if(this.nextIndexPeaks[a]>=i)return!1;let l=this.nextIndexPeaks[a]%s,{peaks:c,threshold:h}=b({audioSampleRate:o,data:e,threshold:a,offset:l});if(c.length===0)return!1;for(let F of c){let k=t+F;this.nextIndexPeaks[h]=k+this.options.muteTimeInIndexes,this.validPeaks[h].push(k),this.options.debug&&n({message:"VALID_PEAK",data:{threshold:h,index:k}})}return!1},this.minValidThreshold)}};var A=class extends AudioWorkletProcessor{constructor(e){super(e);this.stopped=!1;this.aggregate=m(),this.realTimeBpmAnalyzer=new f(e.processorOptions),this.port.addEventListener("message",this.onMessage.bind(this)),this.port.start()}onMessage(e){e.data.message==="RESET"&&(console.log("[processor.onMessage] RESET"),this.aggregate=m(),this.stopped=!1,this.realTimeBpmAnalyzer.reset()),e.data.message==="STOP"&&(console.log("[processor.onMessage] STOP"),this.aggregate=m(),this.stopped=!0,this.realTimeBpmAnalyzer.reset())}process(e,s,t){let i=e[0][0];if(this.stopped||!i)return!0;let{isBufferFull:n,buffer:a,bufferSize:l}=this.aggregate(i);return n&&this.realTimeBpmAnalyzer.analyzeChunck({audioSampleRate:sampleRate,channelData:a,bufferSize:l,postMessage:c=>{this.port.postMessage(c)}}).catch(c=>{console.error(c)}),!0}};registerProcessor(x,A);var L={};})();
+  var realtimeBpmProcessorName = "realtime-bpm-processor";
+  var realtimeBpmProcessor = `"use strict";
+(() => {
+  // src/core/consts.ts
+  var realtimeBpmProcessorName = "realtime-bpm-processor";
+  var startThreshold = 0.95;
+  var minValidThreshold = 0.2;
+  var minPeaks = 15;
+  var thresholdStep = 0.05;
+  var minBpmRange = 90;
+  var maxBpmRange = 180;
+  var peakSkipDuration = 0.25;
+  var maxIntervalComparisons = 10;
+  var defaultBufferSize = 4096;
+  var defaultStabilizationTime = 2e4;
+  var defaultMuteTimeInIndexes = 1e4;
+
+  // src/core/utils.ts
+  async function descendingOverThresholds(onThreshold, minValidThreshold2 = minValidThreshold, startThreshold2 = startThreshold, thresholdStep2 = thresholdStep) {
+    let threshold = startThreshold2;
+    do {
+      threshold -= thresholdStep2;
+      const shouldExit = await onThreshold(threshold);
+      if (shouldExit) {
+        break;
+      }
+    } while (threshold > minValidThreshold2);
+  }
+  function generateThresholdMap(initialValueFactory, minValidThreshold2 = minValidThreshold, startThreshold2 = startThreshold, thresholdStep2 = thresholdStep) {
+    const object = {};
+    let threshold = startThreshold2;
+    do {
+      threshold -= thresholdStep2;
+      object[threshold.toString()] = initialValueFactory();
+    } while (threshold > minValidThreshold2);
+    return object;
+  }
+  function generateValidPeaksModel(minValidThreshold2 = minValidThreshold, startThreshold2 = startThreshold, thresholdStep2 = thresholdStep) {
+    return generateThresholdMap(
+      () => [],
+      minValidThreshold2,
+      startThreshold2,
+      thresholdStep2
+    );
+  }
+  function generateNextIndexPeaksModel(minValidThreshold2 = minValidThreshold, startThreshold2 = startThreshold, thresholdStep2 = thresholdStep) {
+    return generateThresholdMap(
+      () => 0,
+      minValidThreshold2,
+      startThreshold2,
+      thresholdStep2
+    );
+  }
+  function chunkAggregator(bufferSize = defaultBufferSize) {
+    const buffer = new Float32Array(bufferSize);
+    let bytesWritten = 0;
+    return function(pcmData) {
+      if (bytesWritten >= bufferSize) {
+        bytesWritten = 0;
+      }
+      const writable = Math.min(pcmData.length, bufferSize - bytesWritten);
+      buffer.set(pcmData.subarray(0, writable), bytesWritten);
+      bytesWritten += writable;
+      const full = bytesWritten >= bufferSize;
+      return {
+        isBufferFull: full,
+        // Full case: return the shared buffer (safe because RealTimeBpmProcessor's
+        // analysisInProgress guard prevents a second analyzeChunk from reading
+        // the buffer while a new chunk is being written).
+        // Partial case: zero-copy view matching the written length.
+        buffer: full ? buffer : buffer.subarray(0, bytesWritten),
+        bufferSize
+      };
+    };
+  }
+  function computeIndexesToSkip(durationSeconds, sampleRate2) {
+    return Math.round(durationSeconds * sampleRate2);
+  }
+
+  // src/core/peak-detection.ts
+  function findPeaksAtThreshold({
+    audioSampleRate,
+    data,
+    threshold,
+    offset = 0
+  }) {
+    if (threshold < 0 || threshold > 1) {
+      throw new Error(
+        "Invalid threshold: " + threshold + ". Threshold must be between 0 and 1."
+      );
+    }
+    if (audioSampleRate <= 0) {
+      throw new Error(
+        "Invalid sample rate: " + audioSampleRate + ". Sample rate must be positive."
+      );
+    }
+    const peaks = [];
+    const skipForwardIndexes = computeIndexesToSkip(
+      peakSkipDuration,
+      audioSampleRate
+    );
+    const { length } = data;
+    for (let i = offset; i < length; i += 1) {
+      if (data[i] > threshold) {
+        peaks.push(i);
+        i += skipForwardIndexes - 1;
+      }
+    }
+    return {
+      peaks,
+      threshold
+    };
+  }
+
+  // src/core/tempo.ts
+  async function computeBpm({
+    audioSampleRate,
+    data
+  }) {
+    const minPeaks2 = minPeaks;
+    let hasPeaks = false;
+    let foundThreshold = minValidThreshold;
+    await descendingOverThresholds(async (threshold) => {
+      if (hasPeaks) {
+        return true;
+      }
+      if (data[threshold] && data[threshold].length > minPeaks2) {
+        hasPeaks = true;
+        foundThreshold = threshold;
+      }
+      return false;
+    });
+    if (hasPeaks && foundThreshold) {
+      const intervals = identifyIntervals(data[foundThreshold]);
+      const tempos = groupByTempo({ audioSampleRate, intervalCounts: intervals });
+      const candidates = getTopCandidates(tempos);
+      const bpmCandidates = {
+        bpm: candidates,
+        threshold: foundThreshold
+      };
+      return bpmCandidates;
+    }
+    return {
+      bpm: [],
+      threshold: foundThreshold
+    };
+  }
+  function getTopCandidates(candidates, length = 5) {
+    return candidates.sort((a, b) => b.count - a.count).slice(0, length);
+  }
+  function identifyIntervals(peaks) {
+    const intervals = [];
+    for (let n = 0; n < peaks.length; n++) {
+      for (let i = 1; i < maxIntervalComparisons; i++) {
+        const peakIndex = n + i;
+        if (peakIndex >= peaks.length) {
+          break;
+        }
+        const interval = peaks[peakIndex] - peaks[n];
+        const foundInterval = intervals.find(
+          (intervalCount) => intervalCount.interval === interval
+        );
+        if (foundInterval) {
+          const index = intervals.indexOf(foundInterval);
+          intervals[index] = {
+            interval: foundInterval.interval,
+            count: foundInterval.count + 1
+          };
+        } else {
+          intervals.push({
+            interval,
+            count: 1
+          });
+        }
+      }
+    }
+    return intervals;
+  }
+  function groupByTempo({
+    audioSampleRate,
+    intervalCounts
+  }) {
+    const tempoCounts = [];
+    for (const intervalCount of intervalCounts) {
+      if (intervalCount.interval === 0) {
+        continue;
+      }
+      const absoluteInterval = Math.abs(intervalCount.interval);
+      let theoreticalTempo = 60 / (absoluteInterval / audioSampleRate);
+      while (theoreticalTempo < minBpmRange) {
+        theoreticalTempo *= 2;
+      }
+      while (theoreticalTempo > maxBpmRange) {
+        theoreticalTempo /= 2;
+      }
+      theoreticalTempo = Math.round(theoreticalTempo);
+      let foundTempo = tempoCounts.find(
+        (tempoCount) => tempoCount.tempo === theoreticalTempo
+      );
+      if (foundTempo) {
+        const index = tempoCounts.indexOf(foundTempo);
+        tempoCounts[index] = {
+          tempo: foundTempo.tempo,
+          count: foundTempo.count + intervalCount.count,
+          confidence: foundTempo.confidence
+        };
+        foundTempo = tempoCounts[index];
+      }
+      if (!foundTempo) {
+        const tempo = {
+          tempo: theoreticalTempo,
+          count: intervalCount.count,
+          confidence: 0
+        };
+        tempoCounts.push(tempo);
+      }
+    }
+    return tempoCounts;
+  }
+
+  // src/core/realtime-bpm-analyzer.ts
+  var initialValue = {
+    minValidThreshold: () => minValidThreshold,
+    validPeaks: () => generateValidPeaksModel(),
+    nextIndexPeaks: () => generateNextIndexPeaksModel(),
+    skipIndexes: () => 1,
+    effectiveBufferTime: () => 0
+  };
+  var RealTimeBpmAnalyzer = class {
+    constructor(options = {}) {
+      /**
+       * Default configuration
+       */
+      this.options = {
+        continuousAnalysis: false,
+        stabilizationTime: defaultStabilizationTime,
+        muteTimeInIndexes: defaultMuteTimeInIndexes,
+        debug: false
+      };
+      /**
+       * Minimum valid threshold, below this level result would be irrelevant.
+       */
+      this.minValidThreshold = initialValue.minValidThreshold();
+      /**
+       * Contain all valid peaks
+       */
+      this.validPeaks = initialValue.validPeaks();
+      /**
+       * Next index (+muteTimeInIndexes samples, see consts.defaultMuteTimeInIndexes) to take care about peaks
+       */
+      this.nextIndexPeaks = initialValue.nextIndexPeaks();
+      /**
+       * Number / Position of chunks
+       */
+      this.skipIndexes = initialValue.skipIndexes();
+      this.effectiveBufferTime = initialValue.effectiveBufferTime();
+      /**
+       * Computed values
+       */
+      this.computedStabilizationTimeInSeconds = 0;
+      Object.assign(this.options, options);
+      this.updateComputedValues();
+    }
+    /**
+     * Update the computed values
+     */
+    updateComputedValues() {
+      this.computedStabilizationTimeInSeconds = this.options.stabilizationTime / 1e3;
+    }
+    /**
+     * Reset BPM computation properties to get a fresh start
+     */
+    reset() {
+      this.minValidThreshold = initialValue.minValidThreshold();
+      this.validPeaks = initialValue.validPeaks();
+      this.nextIndexPeaks = initialValue.nextIndexPeaks();
+      this.skipIndexes = initialValue.skipIndexes();
+      this.effectiveBufferTime = initialValue.effectiveBufferTime();
+    }
+    /**
+     * Remve all validPeaks between the minThreshold pass in param to optimize the weight of datas
+     * @param minThreshold - Value between 0.9 and 0.2
+     */
+    async clearValidPeaks(minThreshold) {
+      this.minValidThreshold = minThreshold;
+      await descendingOverThresholds(async (threshold) => {
+        if (threshold < minThreshold && this.validPeaks[threshold] !== void 0) {
+          delete this.validPeaks[threshold];
+          delete this.nextIndexPeaks[threshold];
+        }
+        return false;
+      });
+    }
+    /**
+     * Attach this function to an audioprocess event on a audio/video node to compute BPM / Tempo in realtime
+     * @param options - RealtimeAnalyzeChunkOptions
+     * @param options.audioSampleRate - Audio sample rate (44100)
+     * @param options.channelData - Channel data
+     * @param options.bufferSize - Buffer size (4096)
+     * @param options.postMessage - Function to post a message to the processor node
+     */
+    async analyzeChunk({
+      audioSampleRate,
+      channelData,
+      bufferSize,
+      postMessage
+    }) {
+      if (this.options.debug) {
+        postMessage({ type: "analyzeChunk", data: channelData });
+      }
+      this.effectiveBufferTime += bufferSize;
+      const currentMaxIndex = bufferSize * this.skipIndexes;
+      const currentMinIndex = currentMaxIndex - bufferSize;
+      await this.findPeaks({
+        audioSampleRate,
+        channelData,
+        bufferSize,
+        currentMinIndex,
+        currentMaxIndex,
+        postMessage
+      });
+      this.skipIndexes++;
+      const data = await computeBpm({
+        audioSampleRate,
+        data: this.validPeaks
+      });
+      const { threshold } = data;
+      postMessage({ type: "bpm", data });
+      if (this.minValidThreshold < threshold) {
+        postMessage({ type: "bpmStable", data });
+        await this.clearValidPeaks(threshold);
+      }
+      if (this.options.continuousAnalysis && this.effectiveBufferTime / audioSampleRate > this.computedStabilizationTimeInSeconds) {
+        this.reset();
+        postMessage({ type: "analyzerReset" });
+      }
+    }
+    /**
+     * Find the best threshold with enought peaks
+     * @param options - Options for finding peaks
+     * @param options.audioSampleRate - Sample rate
+     * @param options.channelData - Channel data
+     * @param options.bufferSize - Buffer size
+     * @param options.currentMinIndex - Current minimum index
+     * @param options.currentMaxIndex - Current maximum index
+     * @param options.postMessage - Function to post a message to the processor node
+     */
+    async findPeaks({
+      audioSampleRate,
+      channelData,
+      bufferSize,
+      currentMinIndex,
+      currentMaxIndex,
+      postMessage
+    }) {
+      await descendingOverThresholds(async (threshold) => {
+        if (this.nextIndexPeaks[threshold] >= currentMaxIndex) {
+          return false;
+        }
+        const offsetForNextPeak = Math.max(
+          0,
+          this.nextIndexPeaks[threshold] - currentMinIndex
+        );
+        const { peaks, threshold: atThreshold } = findPeaksAtThreshold({
+          audioSampleRate,
+          data: channelData,
+          threshold,
+          offset: offsetForNextPeak
+        });
+        if (peaks.length === 0) {
+          return false;
+        }
+        for (const relativeChunkPeak of peaks) {
+          const index = currentMinIndex + relativeChunkPeak;
+          this.nextIndexPeaks[atThreshold] = index + this.options.muteTimeInIndexes;
+          this.validPeaks[atThreshold].push(index);
+          if (this.options.debug) {
+            postMessage({
+              type: "validPeak",
+              data: {
+                threshold: atThreshold,
+                index
+              }
+            });
+          }
+        }
+        return false;
+      }, this.minValidThreshold);
+    }
+  };
+
+  // src/processor/realtime-bpm-processor.ts
+  var RealTimeBpmProcessor = class extends AudioWorkletProcessor {
+    constructor(options) {
+      super(options);
+      this.stopped = false;
+      // Guards against re-entrant analyzeChunk calls. process() is invoked every
+      // render quantum; without this flag, a slow analysis could have multiple
+      // concurrent invocations mutating the analyzer's shared state.
+      this.analysisInProgress = false;
+      this.aggregate = chunkAggregator();
+      this.realTimeBpmAnalyzer = new RealTimeBpmAnalyzer(
+        options.processorOptions
+      );
+      this.port.addEventListener("message", this.onMessage.bind(this));
+      this.port.start();
+    }
+    /**
+     * Handle message event
+     * @param event Contain event data from main process
+     */
+    onMessage(event) {
+      if (!event?.data) {
+        return;
+      }
+      switch (event.data.type) {
+        case "reset": {
+          this.realTimeBpmAnalyzer.reset();
+          break;
+        }
+        case "stop": {
+          this.stopped = true;
+          break;
+        }
+        default:
+      }
+    }
+    /**
+     * Process function to handle chunks of data
+     * @param inputs Inputs (the data we need to process)
+     * @param _outputs Outputs (not useful for now)
+     * @param _parameters Parameters
+     * @returns Process ended successfully
+     */
+    process(inputs, _outputs, _parameters) {
+      const currentChunk = inputs[0][0];
+      if (this.stopped) {
+        return true;
+      }
+      if (!currentChunk) {
+        return true;
+      }
+      const { isBufferFull, buffer, bufferSize } = this.aggregate(currentChunk);
+      if (isBufferFull && !this.analysisInProgress) {
+        this.analysisInProgress = true;
+        this.realTimeBpmAnalyzer.analyzeChunk({
+          audioSampleRate: sampleRate,
+          channelData: buffer,
+          bufferSize,
+          postMessage: (event) => {
+            this.port.postMessage(event);
+          }
+        }).catch((error) => {
+          this.port.postMessage({
+            type: "error",
+            data: {
+              message: error instanceof Error ? error.message : "Unknown error during BPM analysis",
+              error: error instanceof Error ? error : new Error(String(error))
+            }
+          });
+        }).finally(() => {
+          this.analysisInProgress = false;
+        });
+      }
+      return true;
+    }
+  };
+  registerProcessor(realtimeBpmProcessorName, RealTimeBpmProcessor);
+  var realtime_bpm_processor_default = {};
+})();
 //# sourceMappingURL=realtime-bpm-processor.js.map
 `;
-  async function Z(o, s) {
-    let e = await q(o, T, s);
-    return await o.resume(), e;
+  var generated_processor_default = realtimeBpmProcessor;
+  var BpmAnalyzerEvent = class extends CustomEvent {
+    constructor(type, data) {
+      super(type, { detail: data });
+    }
+  };
+  var BpmAnalyzer = class extends EventTarget {
+    /**
+     * Creates a new BpmAnalyzer instance
+     * @param workletNode - The AudioWorkletNode to wrap
+     */
+    constructor(workletNode) {
+      super();
+      this.node = workletNode;
+      this.setupMessageHandler();
+    }
+    /**
+     * Reset the analyzer state to start fresh analysis
+     *
+     * @remarks
+     * This clears all internal state including detected peaks and intervals,
+     * allowing the analyzer to start analyzing as if it were newly created.
+     *
+     * @example
+     * ```typescript
+     * // When switching to a different audio source
+     * audioElement.src = 'new-song.mp3';
+     * analyzer.reset();
+     * ```
+     */
+    reset() {
+      this.sendControlMessage({ type: "reset" });
+    }
+    /**
+     * Stop the analyzer
+     *
+     * @remarks
+     * This stops the analysis and resets the internal state. The analyzer
+     * will no longer emit events until analysis is restarted.
+     *
+     * @example
+     * ```typescript
+     * analyzer.stop();
+     * ```
+     */
+    stop() {
+      this.sendControlMessage({ type: "stop" });
+    }
+    /**
+     * Add an event listener for a specific event type
+     *
+     * @param event - The event name to listen for
+     * @param listener - The callback function to invoke when the event is emitted
+     *
+     * @example
+     * ```typescript
+     * analyzer.on('bpm', (data) => {
+     *   console.log('Current BPM:', data.bpm[0].tempo);
+     * });
+     * ```
+     */
+    on(event, listener) {
+      this.addEventListener(event, ((event_) => {
+        listener(event_.detail);
+      }));
+    }
+    /**
+     * Add a one-time event listener that will be removed after being called once
+     *
+     * @param event - The event name to listen for
+     * @param listener - The callback function to invoke when the event is emitted
+     *
+     * @example
+     * ```typescript
+     * analyzer.once('bpmStable', (data) => {
+     *   console.log('First stable BPM detected:', data.bpm[0].tempo);
+     * });
+     * ```
+     */
+    once(event, listener) {
+      const onceWrapper = (event_) => {
+        listener(event_.detail);
+        this.removeEventListener(event, onceWrapper);
+      };
+      this.addEventListener(event, onceWrapper);
+    }
+    connect(destination, outputIndex = 0, inputIndex = 0) {
+      if (destination instanceof AudioNode) {
+        return this.node.connect(destination, outputIndex, inputIndex);
+      }
+      this.node.connect(destination, outputIndex);
+    }
+    disconnect(destination, output, input) {
+      if (destination === void 0) {
+        this.node.disconnect();
+      } else if (typeof destination === "number") {
+        this.node.disconnect(destination);
+      } else if (destination instanceof AudioNode) {
+        if (output !== void 0 && input !== void 0) {
+          this.node.disconnect(destination, output, input);
+        } else if (output === void 0) {
+          this.node.disconnect(destination);
+        } else {
+          this.node.disconnect(destination, output);
+        }
+      } else if (destination instanceof AudioParam) {
+        if (output === void 0) {
+          this.node.disconnect(destination);
+        } else {
+          this.node.disconnect(destination, output);
+        }
+      }
+    }
+    /**
+     * Emit an event to all registered listeners
+     */
+    emit(event, data) {
+      this.dispatchEvent(new BpmAnalyzerEvent(event, data));
+    }
+    /**
+     * Set up the message handler to convert MessagePort events to typed events
+     */
+    setupMessageHandler() {
+      this.node.port.onmessage = (event) => {
+        const eventData = event.data;
+        switch (eventData.type) {
+          case "bpm": {
+            this.emit("bpm", eventData.data);
+            break;
+          }
+          case "bpmStable": {
+            this.emit("bpmStable", eventData.data);
+            break;
+          }
+          case "analyzerReset": {
+            this.emit("analyzerReset", void 0);
+            break;
+          }
+          case "analyzeChunk": {
+            this.emit("analyzeChunk", eventData.data);
+            break;
+          }
+          case "validPeak": {
+            this.emit("validPeak", eventData.data);
+            break;
+          }
+          case "error": {
+            this.emit("error", eventData.data);
+            break;
+          }
+        }
+      };
+    }
+    /**
+     * Send a control message to the processor
+     */
+    sendControlMessage(message) {
+      this.node.port.postMessage(message);
+    }
+    /**
+     * Get the audio context associated with this analyzer
+     */
+    get context() {
+      return this.node.context;
+    }
+    /**
+     * Get the number of inputs
+     */
+    get numberOfInputs() {
+      return this.node.numberOfInputs;
+    }
+    /**
+     * Get the number of outputs
+     */
+    get numberOfOutputs() {
+      return this.node.numberOfOutputs;
+    }
+    /**
+     * Get the channel count
+     */
+    get channelCount() {
+      return this.node.channelCount;
+    }
+    set channelCount(value) {
+      this.node.channelCount = value;
+    }
+    /**
+     * Get the channel count mode
+     */
+    get channelCountMode() {
+      return this.node.channelCountMode;
+    }
+    set channelCountMode(value) {
+      this.node.channelCountMode = value;
+    }
+    /**
+     * Get the channel interpretation
+     */
+    get channelInterpretation() {
+      return this.node.channelInterpretation;
+    }
+    set channelInterpretation(value) {
+      this.node.channelInterpretation = value;
+    }
+  };
+  async function createRealtimeBpmAnalyzer(audioContext, processorOptions) {
+    const processorNode = await setupAudioWorkletNode(
+      audioContext,
+      realtimeBpmProcessorName,
+      processorOptions
+    );
+    await audioContext.resume();
+    return new BpmAnalyzer(processorNode);
   }
-  async function q(o, s, e) {
-    let n = new Blob([g], { type: "application/javascript" }), t = URL.createObjectURL(n);
-    return await o.audioWorklet.addModule(t), new AudioWorkletNode(o, s, { processorOptions: e });
+  async function setupAudioWorkletNode(audioContext, processorName, processorOptions) {
+    const blob = new Blob([generated_processor_default], {
+      type: "application/javascript"
+    });
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      await audioContext.audioWorklet.addModule(objectUrl);
+      return new AudioWorkletNode(audioContext, processorName, {
+        processorOptions
+      });
+    } catch (err) {
+      throw new Error(
+        `Failed to load realtime-bpm-analyzer worklet: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err }
+      );
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
   }
 
   // node_modules/web-audio-beat-detector/build/es2019/module.js
@@ -558,50 +1256,8 @@
   // node_modules/broker-factory/build/es2019/module.js
   var import_fast_unique_numbers = __toESM(require_bundle());
 
-  // node_modules/broker-factory/build/es2019/guards/message-port.js
-  var isMessagePort = (sender) => {
-    return typeof sender.start === "function";
-  };
-
-  // node_modules/broker-factory/build/es2019/helpers/port-map.js
-  var PORT_MAP = /* @__PURE__ */ new WeakMap();
-
-  // node_modules/broker-factory/build/es2019/helpers/extend-broker-implementation.js
-  var extendBrokerImplementation = (partialBrokerImplementation) => ({
-    ...partialBrokerImplementation,
-    connect: ({ call }) => {
-      return async () => {
-        const { port1, port2 } = new MessageChannel();
-        const portId = await call("connect", { port: port1 }, [port1]);
-        PORT_MAP.set(port2, portId);
-        return port2;
-      };
-    },
-    disconnect: ({ call }) => {
-      return async (port) => {
-        const portId = PORT_MAP.get(port);
-        if (portId === void 0) {
-          throw new Error("The given port is not connected.");
-        }
-        await call("disconnect", { portId });
-      };
-    },
-    isSupported: ({ call }) => {
-      return () => call("isSupported");
-    }
-  });
-
-  // node_modules/broker-factory/build/es2019/module.js
-  var ONGOING_REQUESTS = /* @__PURE__ */ new WeakMap();
-  var createOrGetOngoingRequests = (sender) => {
-    if (ONGOING_REQUESTS.has(sender)) {
-      return ONGOING_REQUESTS.get(sender);
-    }
-    const ongoingRequests = /* @__PURE__ */ new Map();
-    ONGOING_REQUESTS.set(sender, ongoingRequests);
-    return ongoingRequests;
-  };
-  var createBroker = (brokerImplementation) => {
+  // node_modules/broker-factory/build/es2019/factories/create-broker.js
+  var createBrokerFactory = (createOrGetOngoingRequests, extendBrokerImplementation, generateUniqueNumber2, isMessagePort2) => (brokerImplementation) => {
     const fullBrokerImplementation = extendBrokerImplementation(brokerImplementation);
     return (sender) => {
       const ongoingRequests = createOrGetOngoingRequests(sender);
@@ -617,12 +1273,12 @@
           }
         }
       }));
-      if (isMessagePort(sender)) {
+      if (isMessagePort2(sender)) {
         sender.start();
       }
       const call = (method, params = null, transferables = []) => {
         return new Promise((resolve, reject) => {
-          const id = (0, import_fast_unique_numbers.generateUniqueNumber)(ongoingRequests);
+          const id = generateUniqueNumber2(ongoingRequests);
           ongoingRequests.set(id, { reject, resolve });
           if (params === null) {
             sender.postMessage({ id, method }, transferables);
@@ -641,6 +1297,49 @@
       return { ...functions };
     };
   };
+
+  // node_modules/broker-factory/build/es2019/factories/create-or-get-ongoing-requests.js
+  var createCreateOrGetOngoingRequests = (ongoingRequestsMap) => (sender) => {
+    if (ongoingRequestsMap.has(sender)) {
+      return ongoingRequestsMap.get(sender);
+    }
+    const ongoingRequests = /* @__PURE__ */ new Map();
+    ongoingRequestsMap.set(sender, ongoingRequests);
+    return ongoingRequests;
+  };
+
+  // node_modules/broker-factory/build/es2019/factories/extend-broker-implementation.js
+  var createExtendBrokerImplementation = (portMap) => (partialBrokerImplementation) => ({
+    ...partialBrokerImplementation,
+    connect: ({ call }) => {
+      return async () => {
+        const { port1, port2 } = new MessageChannel();
+        const portId = await call("connect", { port: port1 }, [port1]);
+        portMap.set(port2, portId);
+        return port2;
+      };
+    },
+    disconnect: ({ call }) => {
+      return async (port) => {
+        const portId = portMap.get(port);
+        if (portId === void 0) {
+          throw new Error("The given port is not connected.");
+        }
+        await call("disconnect", { portId });
+      };
+    },
+    isSupported: ({ call }) => {
+      return () => call("isSupported");
+    }
+  });
+
+  // node_modules/broker-factory/build/es2019/guards/message-port.js
+  var isMessagePort = (sender) => {
+    return typeof sender.start === "function";
+  };
+
+  // node_modules/broker-factory/build/es2019/module.js
+  var createBroker = createBrokerFactory(createCreateOrGetOngoingRequests(/* @__PURE__ */ new WeakMap()), createExtendBrokerImplementation(/* @__PURE__ */ new WeakMap()), import_fast_unique_numbers.generateUniqueNumber, isMessagePort);
 
   // node_modules/standardized-audio-context/build/es2019/module.js
   var import_automation_events2 = __toESM(require_bundle2());
@@ -8015,7 +8714,7 @@
   };
 
   // node_modules/web-audio-beat-detector/build/es2019/worker/worker.js
-  var worker = `(()=>{var e={455:function(e,t){!function(e){"use strict";var t=function(e){return function(t){var r=e(t);return t.add(r),r}},r=function(e){return function(t,r){return e.set(t,r),r}},n=void 0===Number.MAX_SAFE_INTEGER?9007199254740991:Number.MAX_SAFE_INTEGER,o=536870912,s=2*o,a=function(e,t){return function(r){var a=t.get(r),i=void 0===a?r.size:a<s?a+1:0;if(!r.has(i))return e(r,i);if(r.size<o){for(;r.has(i);)i=Math.floor(Math.random()*s);return e(r,i)}if(r.size>n)throw new Error("Congratulations, you created a collection of unique numbers which uses all available integers!");for(;r.has(i);)i=Math.floor(Math.random()*n);return e(r,i)}},i=new WeakMap,c=r(i),u=a(c,i),l=t(u);e.addUniqueNumber=l,e.generateUniqueNumber=u}(t)}},t={};function r(n){var o=t[n];if(void 0!==o)return o.exports;var s=t[n]={exports:{}};return e[n].call(s.exports,s,s.exports,r),s.exports}(()=>{"use strict";const e=-32603,t=-32602,n=-32601,o=(e,t)=>Object.assign(new Error(e),{status:t}),s=t=>o('The handler of the method called "'.concat(t,'" returned an unexpected result.'),e),a=(t,r)=>async({data:{id:a,method:i,params:c}})=>{const u=r[i];try{if(void 0===u)throw(e=>o('The requested method called "'.concat(e,'" is not supported.'),n))(i);const r=void 0===c?u():u(c);if(void 0===r)throw(t=>o('The handler of the method called "'.concat(t,'" returned no required result.'),e))(i);const l=r instanceof Promise?await r:r;if(null===a){if(void 0!==l.result)throw s(i)}else{if(void 0===l.result)throw s(i);const{result:e,transferables:r=[]}=l;t.postMessage({id:a,result:e},r)}}catch(e){const{message:r,status:n=-32603}=e;t.postMessage({error:{code:n,message:r},id:a})}};var i=r(455);const c=new Map,u=(e,r,n)=>({...r,connect:({port:t})=>{t.start();const n=e(t,r),o=(0,i.generateUniqueNumber)(c);return c.set(o,()=>{n(),t.close(),c.delete(o)}),{result:o}},disconnect:({portId:e})=>{const r=c.get(e);if(void 0===r)throw(e=>o('The specified parameter called "portId" with the given value "'.concat(e,'" does not identify a port connected to this worker.'),t))(e);return r(),{result:null}},isSupported:async()=>{if(await new Promise(e=>{const t=new ArrayBuffer(0),{port1:r,port2:n}=new MessageChannel;r.onmessage=({data:t})=>e(null!==t),n.postMessage(t,[t])})){const e=n();return{result:e instanceof Promise?await e:e}}return{result:!1}}}),l=(e,t,r=()=>!0)=>{const n=u(l,t,r),o=a(e,n);return e.addEventListener("message",o),()=>e.removeEventListener("message",o)},h=(e,t,r)=>{const n=e.length,o=[];let s=!1;for(let a=0;a<n;a+=1)e[a]>t?s=!0:s&&(s=!1,o.push(a-1),a+=r/4-1);return s&&o.push(n-1),o},d=(e,t,r)=>{const n=(e=>{let t=0;const r=e.length;for(let n=0;n<r;n+=1)e[n]>t&&(t=e[n]);return t})(e),o=.3*n;let s=[],a=n-.05*n;if(n>.25)for(;s.length<30&&a>=o;)s=h(e,a,t),a-=.05*n;const i=(e=>{const t=[];return e.forEach((r,n)=>{const o=Math.min(e.length-n,10);for(let s=1;s<o;s+=1){const o=e[n+s]-r;t.some(e=>e.interval===o&&(e.peaks.push(r),!0))||t.push({interval:o,peaks:[r]})}}),t})(s),c=((e,t,r={})=>{var n,o;const s=Math.max(0,null!==(n=r.maxTempo)&&void 0!==n?n:180),a=Math.max(0,null!==(o=r.minTempo)&&void 0!==o?o:90),i=[];return e.forEach(e=>{let r=60/(e.interval/t);for(;r<a;)r*=2;for(;r>s;)r/=2;if(r<a)return;let n=!1,o=e.peaks.length;i.forEach(t=>{if(t.tempo===r&&(t.score+=e.peaks.length,t.peaks=[...t.peaks,...e.peaks],n=!0),t.tempo>r-.5&&t.tempo<r+.5){const n=2*Math.abs(t.tempo-r);o+=(1-n)*t.peaks.length,t.score+=(1-n)*e.peaks.length}}),n||i.push({peaks:e.peaks,score:o,tempo:r})}),i})(i,t,r);return c.sort((e,t)=>t.score-e.score),c},p=(e,t,r)=>{const n=d(e,t,r);if(0===n.length)throw new Error("The given channelData does not contain any detectable beats.");return n[0].tempo},f=(e,t,r)=>{const n=d(e,t,r);if(0===n.length)throw new Error("The given channelData does not contain any detectable beats.");const{peaks:o,tempo:s}=n[0],a=Math.round(s),i=60/a;o.sort((e,t)=>e-t);let c=o[0]/t;for(;c>i;)c-=i;return{bpm:a,offset:c,tempo:s}};l(self,{analyze:({channelData:e,sampleRate:t,tempoSettings:r})=>({result:p(e,t,r)}),guess:({channelData:e,sampleRate:t,tempoSettings:r})=>({result:f(e,t,r)})})})()})();`;
+  var worker = `(()=>{var e={455(e,t){!function(e){"use strict";var t=function(e){return function(t){var r=e(t);return t.add(r),r}},r=function(e){return function(t,r){return e.set(t,r),r}},n=void 0===Number.MAX_SAFE_INTEGER?9007199254740991:Number.MAX_SAFE_INTEGER,o=536870912,s=2*o,a=function(e,t){return function(r){var a=t.get(r),i=void 0===a?r.size:a<s?a+1:0;if(!r.has(i))return e(r,i);if(r.size<o){for(;r.has(i);)i=Math.floor(Math.random()*s);return e(r,i)}if(r.size>n)throw new Error("Congratulations, you created a collection of unique numbers which uses all available integers!");for(;r.has(i);)i=Math.floor(Math.random()*n);return e(r,i)}},i=new WeakMap,c=r(i),u=a(c,i),l=t(u);e.addUniqueNumber=l,e.generateUniqueNumber=u}(t)}},t={};function r(n){var o=t[n];if(void 0!==o)return o.exports;var s=t[n]={exports:{}};return e[n].call(s.exports,s,s.exports,r),s.exports}(()=>{"use strict";const e=-32603,t=-32602,n=-32601,o=(e,t)=>Object.assign(new Error(e),{status:t}),s=t=>o('The handler of the method called "'.concat(t,'" returned an unexpected result.'),e),a=(t,r)=>async({data:{id:a,method:i,params:c}})=>{const u=r[i];try{if(void 0===u)throw(e=>o('The requested method called "'.concat(e,'" is not supported.'),n))(i);const r=void 0===c?u():u(c);if(void 0===r)throw(t=>o('The handler of the method called "'.concat(t,'" returned no required result.'),e))(i);const l=r instanceof Promise?await r:r;if(null===a){if(void 0!==l.result)throw s(i)}else{if(void 0===l.result)throw s(i);const{result:e,transferables:r=[]}=l;t.postMessage({id:a,result:e},r)}}catch(e){const{message:r,status:n=-32603}=e;t.postMessage({error:{code:n,message:r},id:a})}};var i=r(455);const c=new Map,u=(e,r,n)=>({...r,connect:({port:t})=>{t.start();const n=e(t,r),o=(0,i.generateUniqueNumber)(c);return c.set(o,()=>{n(),t.close(),c.delete(o)}),{result:o}},disconnect:({portId:e})=>{const r=c.get(e);if(void 0===r)throw(e=>o('The specified parameter called "portId" with the given value "'.concat(e,'" does not identify a port connected to this worker.'),t))(e);return r(),{result:null}},isSupported:async()=>{if(await new Promise(e=>{const t=new ArrayBuffer(0),{port1:r,port2:n}=new MessageChannel;r.onmessage=({data:t})=>e(null!==t),n.postMessage(t,[t])})){const e=n();return{result:e instanceof Promise?await e:e}}return{result:!1}}}),l=(e,t,r=()=>!0)=>{const n=u(l,t,r),o=a(e,n);return e.addEventListener("message",o),()=>e.removeEventListener("message",o)},h=(e,t,r)=>{const n=e.length,o=[];let s=!1;for(let a=0;a<n;a+=1)e[a]>t?s=!0:s&&(s=!1,o.push(a-1),a+=r/4-1);return s&&o.push(n-1),o},d=(e,t,r)=>{const n=(e=>{let t=0;const r=e.length;for(let n=0;n<r;n+=1)e[n]>t&&(t=e[n]);return t})(e),o=.3*n;let s=[],a=n-.05*n;if(n>.25)for(;s.length<30&&a>=o;)s=h(e,a,t),a-=.05*n;const i=(e=>{const t=[];return e.forEach((r,n)=>{const o=Math.min(e.length-n,10);for(let s=1;s<o;s+=1){const o=e[n+s]-r;t.some(e=>e.interval===o&&(e.peaks.push(r),!0))||t.push({interval:o,peaks:[r]})}}),t})(s),c=((e,t,r={})=>{var n,o;const s=Math.max(0,null!==(n=r.maxTempo)&&void 0!==n?n:180),a=Math.max(0,null!==(o=r.minTempo)&&void 0!==o?o:90),i=[];return e.forEach(e=>{let r=60/(e.interval/t);for(;r<a;)r*=2;for(;r>s;)r/=2;if(r<a)return;let n=!1,o=e.peaks.length;i.forEach(t=>{if(t.tempo===r&&(t.score+=e.peaks.length,t.peaks=[...t.peaks,...e.peaks],n=!0),t.tempo>r-.5&&t.tempo<r+.5){const n=2*Math.abs(t.tempo-r);o+=(1-n)*t.peaks.length,t.score+=(1-n)*e.peaks.length}}),n||i.push({peaks:e.peaks,score:o,tempo:r})}),i})(i,t,r);return c.sort((e,t)=>t.score-e.score),c},p=(e,t,r)=>{const n=d(e,t,r);if(0===n.length)throw new Error("The given channelData does not contain any detectable beats.");return n[0].tempo},f=(e,t,r)=>{const n=d(e,t,r);if(0===n.length)throw new Error("The given channelData does not contain any detectable beats.");const{peaks:o,tempo:s}=n[0],a=Math.round(s),i=60/a;o.sort((e,t)=>e-t);let c=o[0]/t;for(;c>i;)c-=i;return{bpm:a,offset:c,tempo:s}};l(self,{analyze:({channelData:e,sampleRate:t,tempoSettings:r})=>({result:p(e,t,r)}),guess:({channelData:e,sampleRate:t,tempoSettings:r})=>({result:f(e,t,r)})})})()})();`;
 
   // node_modules/web-audio-beat-detector/build/es2019/module.js
   var loadOrReturnBroker = createLoadOrReturnBroker(load, worker);
@@ -8024,7 +8723,7 @@
 
   // bpm-detectors.js
   window.BPMDetectors = {
-    RealtimeBPM: { createRealTimeBpmProcessor: Z },
+    RealtimeBPM: { createRealtimeBpmAnalyzer },
     BeatDetector: module_exports
   };
 })();

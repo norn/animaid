@@ -622,53 +622,38 @@
         async function setupRealtimeBPM() {
             try {
                 console.log('[BPM] Setting up Realtime BPM analyzer...');
-                console.log('[BPM] Available detectors:', window.BPMDetectors);
 
-                // Setup realtime-bpm-analyzer with more responsive settings
-                realtimeBpmProcessor = await window.BPMDetectors.RealtimeBPM.createRealTimeBpmProcessor(audioContext, {
+                // realtime-bpm-analyzer v5: returns a BpmAnalyzer event emitter
+                // wrapping an AudioWorkletNode (exposed as .node)
+                realtimeBpmProcessor = await window.BPMDetectors.RealtimeBPM.createRealtimeBpmAnalyzer(audioContext, {
                     continuousAnalysis: true,
                     stabilizationTime: 10000,  // Reduced from 20s to 10s for faster response
                     muteTimeInIndexes: 5000     // Reduced mute time between peaks
                 });
-                console.log('[BPM] Realtime BPM processor created successfully');
+                console.log('[BPM] Realtime BPM analyzer created successfully');
 
-                // Connect audio chain
+                // Connect audio chain. The analyzer is analysis-only: its
+                // output is silent and stays unconnected — nothing is played back
                 microphone.connect(lowpassFilter);
-                lowpassFilter.connect(realtimeBpmProcessor);
-                realtimeBpmProcessor.connect(audioContext.destination);
+                lowpassFilter.connect(realtimeBpmProcessor.node);
 
-                // Listen for BPM updates
-                realtimeBpmProcessor.port.onmessage = (event) => {
-                    const { message, data } = event.data;
-
-                    // Log different message types
-                    if (message === 'BPM_STABLE') {
-                        console.log('[BPM] Realtime STABLE:', data);
-                    } else if (message === 'BPM') {
-                        // Only log every 10th BPM message to reduce noise
-                        if (!window._bpmMessageCount) window._bpmMessageCount = 0;
-                        window._bpmMessageCount++;
-                        if (window._bpmMessageCount % 10 === 0) {
-                            console.log('[BPM] Realtime BPM update:', data);
+                // Listen for BPM updates (v5 emits typed events instead of port messages)
+                const onBpmCandidates = (data, stable) => {
+                    if (data.bpm && data.bpm.length > 0) {
+                        const detectedBPM = data.bpm[0].tempo;
+                        if (stable) {
+                            console.log('[BPM] Realtime STABLE:', detectedBPM, 'count:', data.bpm[0].count);
                         }
-                    } else if (message === 'VALID_PEAK') {
-                        console.log('[BPM] Realtime detected peak:', data);
-                    } else if (message === 'ANALYZER_RESETED') {
-                        console.log('[BPM] Realtime analyzer was reset (continuous mode)');
-                    }
-
-                    // Handle BPM detection
-                    if (message === 'BPM_STABLE' || message === 'BPM') {
-                        const bpmData = data;
-                        if (bpmData.bpm && bpmData.bpm.length > 0) {
-                            const detectedBPM = bpmData.bpm[0].tempo;
-                            console.log('[BPM] Realtime detected BPM:', detectedBPM, 'count:', bpmData.bpm[0].count);
-                            if (detectedBPM >= 60 && detectedBPM <= 200) {
-                                handleBPMDetection(detectedBPM);
-                            }
+                        if (detectedBPM >= 60 && detectedBPM <= 200) {
+                            handleBPMDetection(detectedBPM);
                         }
                     }
                 };
+                realtimeBpmProcessor.on('bpm', data => onBpmCandidates(data, false));
+                realtimeBpmProcessor.on('bpmStable', data => onBpmCandidates(data, true));
+                realtimeBpmProcessor.on('analyzerReset', () => {
+                    console.log('[BPM] Realtime analyzer was reset (continuous mode)');
+                });
             } catch (err) {
                 console.error('[BPM] Realtime BPM setup error:', err);
                 document.getElementById('micStatus').textContent = 'Realtime BPM setup failed, using Simple';
@@ -697,8 +682,8 @@
                     workletNode = null;
                 }
                 if (realtimeBpmProcessor) {
+                    realtimeBpmProcessor.stop();
                     realtimeBpmProcessor.disconnect();
-                    realtimeBpmProcessor.port.onmessage = null;
                     realtimeBpmProcessor = null;
                 }
                 if (lowpassFilter) lowpassFilter.disconnect();
